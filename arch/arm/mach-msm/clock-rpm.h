@@ -18,6 +18,14 @@
 #include <mach/rpm-smd.h>
 #include <mach/clk-provider.h>
 
+#define RPM_SMD_KEY_RATE	0x007A484B
+#define RPM_SMD_KEY_ENABLE	0x62616E45
+#define RPM_SMD_KEY_STATE	0x54415453
+
+#define RPM_CLK_BUFFER_A_REQ			0x616B6C63
+#define RPM_KEY_SOFTWARE_ENABLE			0x6E657773
+#define RPM_KEY_PIN_CTRL_CLK_BUFFER_ENABLE_KEY	0x62636370
+
 struct clk_ops;
 struct clk_rpmrs_data;
 extern struct clk_ops clk_ops_rpm;
