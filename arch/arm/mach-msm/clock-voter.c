@@ -14,8 +14,7 @@
 #include <linux/err.h>
 #include <linux/spinlock.h>
 #include <linux/clk.h>
-
-#include "clock.h"
+#include <mach/clk-provider.h>
 #include "clock-voter.h"
 
 static DEFINE_SPINLOCK(voter_clk_lock);

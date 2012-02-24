@@ -16,6 +16,7 @@
 
 #include <mach/rpm.h>
 #include <mach/rpm-smd.h>
+#include <mach/clk-provider.h>
 
 struct clk_ops;
 struct clk_rpmrs_data;
