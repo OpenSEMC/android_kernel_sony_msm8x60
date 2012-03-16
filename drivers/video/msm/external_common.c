@@ -445,6 +445,40 @@ static ssize_t hdmi_common_rda_product_description(struct device *dev,
 	return ret;
 }
 
+static ssize_t hdmi_common_rda_edid_3d_modes(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	int i;
+	char buff_3d[128];
+
+	buf[0] = 0;
+	if (external_common_state->disp_mode_list.num_of_elements) {
+		uint32 *video_mode = external_common_state->disp_mode_list
+			.disp_mode_list;
+		uint32 *video_3d_mode = external_common_state->disp_mode_list
+			.disp_3d_mode_list;
+		for (i = 0; i < external_common_state->disp_mode_list
+			.num_of_elements; ++i) {
+			video_3d_format_2string(*video_3d_mode++, buff_3d);
+			if (ret > 0)
+				ret += snprintf(buf+ret, PAGE_SIZE-ret,
+					",%d=%s",
+					*video_mode++ + 1, buff_3d);
+			else
+				ret += snprintf(buf+ret, PAGE_SIZE-ret,
+					"%d=%s",
+					*video_mode++ + 1, buff_3d);
+		}
+	} else
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d",
+			external_common_state->video_resolution+1);
+
+	DEV_DBG("%s: '%s'\n", __func__, buf);
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	return ret;
+}
+
 static ssize_t hdmi_common_rda_hdcp(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -818,6 +852,8 @@ static DEVICE_ATTR(vendor_name, S_IRUGO | S_IWUSR, hdmi_common_rda_vendor_name,
 static DEVICE_ATTR(product_description, S_IRUGO | S_IWUSR,
 	hdmi_common_rda_product_description,
 	hdmi_common_wta_product_description);
+static DEVICE_ATTR(edid_3d_modes, S_IRUGO,
+	hdmi_common_rda_edid_3d_modes, NULL);
 static DEVICE_ATTR(3d_present, S_IRUGO, hdmi_common_rda_3d_present, NULL);
 static DEVICE_ATTR(hdcp_present, S_IRUGO, hdmi_common_rda_hdcp_present, NULL);
 #endif
@@ -840,6 +876,7 @@ static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_scan_info.attr,
 	&dev_attr_vendor_name.attr,
 	&dev_attr_product_description.attr,
+	&dev_attr_edid_3d_modes.attr,
 	&dev_attr_3d_present.attr,
 	&dev_attr_hdcp_present.attr,
 #endif
@@ -1596,6 +1633,192 @@ static void hdmi_edid_get_display_vsd_3d_mode(const uint8 *data_buf,
 	}
 }
 
+const char *single_video_3d_format_2string(uint32 format)
+{
+	switch (format) {
+	case TOP_AND_BOTTOM: return "TAB";
+	case FRAME_PACKING: return "FP";
+	case SIDE_BY_SIDE_HALF: return "SSH";
+	}
+	return "";
+}
+
+ssize_t video_3d_format_2string(uint32 format, char *buf)
+{
+	ssize_t ret, len = 0;
+	ret = snprintf(buf, PAGE_SIZE, "%s",
+		single_video_3d_format_2string(format & FRAME_PACKING));
+	len += ret;
+
+	if (len && (format & TOP_AND_BOTTOM))
+		ret = snprintf(buf + len, PAGE_SIZE, ":%s",
+			single_video_3d_format_2string(
+				format & TOP_AND_BOTTOM));
+	else
+		ret = snprintf(buf + len, PAGE_SIZE, "%s",
+			single_video_3d_format_2string(
+				format & TOP_AND_BOTTOM));
+	len += ret;
+
+	if (len && (format & SIDE_BY_SIDE_HALF))
+		ret = snprintf(buf + len, PAGE_SIZE, ":%s",
+			single_video_3d_format_2string(
+				format & SIDE_BY_SIDE_HALF));
+	else
+		ret = snprintf(buf + len, PAGE_SIZE, "%s",
+			single_video_3d_format_2string(
+				format & SIDE_BY_SIDE_HALF));
+	len += ret;
+
+	return len;
+}
+
+static void add_supported_3d_format(
+	struct hdmi_disp_mode_list_type *disp_mode_list,
+	uint32 video_format,
+	uint32 video_3d_format)
+{
+	char string[128];
+	boolean added = FALSE;
+	int i;
+	for (i = 0; i < disp_mode_list->num_of_elements; ++i) {
+		if (disp_mode_list->disp_mode_list[i] == video_format) {
+			disp_mode_list->disp_3d_mode_list[i] |=
+				video_3d_format;
+			added = TRUE;
+			break;
+		}
+	}
+	video_3d_format_2string(video_3d_format, string);
+	DEV_DBG("EDID[3D]: format: %d [%s], %s %s\n",
+		video_format, video_format_2string(video_format),
+		string, added ? "added" : "NOT added");
+}
+
+static void hdmi_edid_get_display_vsd_3d_mode(const uint8 *data_buf,
+	struct hdmi_disp_mode_list_type *disp_mode_list,
+	uint32 num_og_cea_blocks)
+{
+	uint8 len, offset, present_multi_3d, hdmi_vic_len, hdmi_3d_len;
+	uint16 structure_all, structure_mask;
+	const uint8 *vsd = num_og_cea_blocks ?
+		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
+				3, &len) : NULL;
+	int i;
+
+	offset = HDMI_VSDB_3D_DATA_OFFSET(vsd);
+	present_multi_3d = (vsd[offset] & 0x60) >> 5;
+
+	offset += 1;
+	hdmi_vic_len = (vsd[offset] >> 5) & 0x7;
+	hdmi_3d_len = vsd[offset] & 0x1F;
+	DEV_DBG("EDID[3D]: HDMI_VIC_LEN = %d, HDMI_3D_LEN = %d\n",
+		hdmi_vic_len, hdmi_3d_len);
+
+	offset += (hdmi_vic_len + 1);
+	if (present_multi_3d == 1 || present_multi_3d == 2) {
+		DEV_DBG("EDID[3D]: multi 3D present (%d)\n", present_multi_3d);
+		/* 3d_structure_all */
+		structure_all = (vsd[offset] << 8) | vsd[offset + 1];
+		offset += 2;
+		hdmi_3d_len -= 2;
+		if (present_multi_3d == 2) {
+			/* 3d_structure_mask */
+			structure_mask = (vsd[offset] << 8) | vsd[offset + 1];
+			offset += 2;
+			hdmi_3d_len -= 2;
+		} else
+			structure_mask = 0xffff;
+
+		i = 0;
+		while (i < 16) {
+			if (i >= disp_mode_list->disp_multi_3d_mode_list_cnt)
+				break;
+
+			if (!(structure_mask & BIT(i))) {
+				++i;
+				continue;
+			}
+
+			/* BIT0: FRAME PACKING */
+			if (structure_all & BIT(0))
+				add_supported_3d_format(disp_mode_list,
+					disp_mode_list->
+						disp_multi_3d_mode_list[i],
+					FRAME_PACKING);
+
+			/* BIT6: TOP AND BOTTOM */
+			if (structure_all & BIT(6))
+				add_supported_3d_format(disp_mode_list,
+					disp_mode_list->
+						disp_multi_3d_mode_list[i],
+					TOP_AND_BOTTOM);
+
+			/* BIT8: SIDE BY SIDE HALF */
+			if (structure_all & BIT(8))
+				add_supported_3d_format(disp_mode_list,
+					disp_mode_list->
+						disp_multi_3d_mode_list[i],
+					SIDE_BY_SIDE_HALF);
+
+			++i;
+		}
+	}
+
+	i = 0;
+	while (hdmi_3d_len > 0) {
+		DEV_DBG("EDID[3D]: 3D_Structure_%d @ %d: %02x\n",
+			i + 1, offset, vsd[offset]);
+
+		if ((vsd[offset] >> 4) >=
+			disp_mode_list->disp_multi_3d_mode_list_cnt) {
+			if ((vsd[offset] & 0x0F) >= 8) {
+				offset += 1;
+				hdmi_3d_len -= 1;
+				DEV_DBG("EDID[3D]: 3D_Detail_%d @ %d: %02x\n",
+					i + 1, offset, vsd[offset]);
+			}
+			i += 1;
+			offset += 1;
+			hdmi_3d_len -= 1;
+			continue;
+		}
+
+		switch (vsd[offset] & 0x0F) {
+		case 0:
+			/* 0000b: FRAME PACKING */
+			add_supported_3d_format(disp_mode_list,
+				disp_mode_list->disp_multi_3d_mode_list
+					[vsd[offset] >> 4],
+				FRAME_PACKING);
+			break;
+		case 6:
+			/* 0110b: TOP AND BOTTOM */
+			add_supported_3d_format(disp_mode_list,
+				disp_mode_list->disp_multi_3d_mode_list
+					[vsd[offset] >> 4],
+				TOP_AND_BOTTOM);
+			break;
+		case 8:
+			/* 1000b: SIDE BY SIDE HALF */
+			add_supported_3d_format(disp_mode_list,
+				disp_mode_list->disp_multi_3d_mode_list
+					[vsd[offset] >> 4],
+				SIDE_BY_SIDE_HALF);
+			break;
+		}
+		if ((vsd[offset] & 0x0F) >= 8) {
+			offset += 1;
+			hdmi_3d_len -= 1;
+			DEV_DBG("EDID[3D]: 3D_Detail_%d @ %d: %02x\n",
+				i + 1, offset, vsd[offset]);
+		}
+		i += 1;
+		offset += 1;
+		hdmi_3d_len -= 1;
+	}
+}
+
 static void hdmi_edid_get_display_mode(const uint8 *data_buf,
 	struct hdmi_disp_mode_list_type *disp_mode_list,
 	uint32 num_og_cea_blocks)
@@ -1609,6 +1832,9 @@ static void hdmi_edid_get_display_mode(const uint8 *data_buf,
 	const uint8 *svd = num_og_cea_blocks ?
 		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
 				2, &len) : NULL;
+	boolean has60hz_mode	= FALSE;
+	boolean has50hz_mode	= FALSE;
+
 
 	disp_mode_list->num_of_elements = 0;
 	disp_mode_list->disp_multi_3d_mode_list_cnt = 0;
@@ -1626,6 +1852,23 @@ static void hdmi_edid_get_display_mode(const uint8 *data_buf,
 				external_common_state->preferred_video_format =
 					video_format;
 			}
+			if (i < 16) {
+				disp_mode_list->disp_multi_3d_mode_list[i]
+					= video_format;
+				disp_mode_list->disp_multi_3d_mode_list_cnt++;
+			}
+
+			if (video_format <= HDMI_VFRMT_1920x1080p60_16_9 ||
+				video_format == HDMI_VFRMT_2880x480p60_4_3 ||
+				video_format == HDMI_VFRMT_2880x480p60_16_9)
+				has60hz_mode = TRUE;
+
+			if ((video_format >= HDMI_VFRMT_720x576p50_4_3 &&
+				video_format <= HDMI_VFRMT_1920x1080p50_16_9) ||
+				video_format == HDMI_VFRMT_2880x576p50_4_3 ||
+				video_format == HDMI_VFRMT_2880x576p50_16_9 ||
+				video_format == HDMI_VFRMT_1920x1250i50_16_9)
+				has50hz_mode = TRUE;
 			if (video_format == HDMI_VFRMT_640x480p60_4_3)
 				has480p = TRUE;
 		}
