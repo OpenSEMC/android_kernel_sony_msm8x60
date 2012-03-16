@@ -226,13 +226,10 @@ struct external_common_state_type {
 	uint8 speaker_allocation_block;
 	uint16 video_latency, audio_latency;
 	uint8 audio_data_block_cnt;
-	uint16 physical_address;
 	uint32 preferred_video_format;
 	uint8 pt_scan_info;
 	uint8 it_scan_info;
 	uint8 ce_scan_info;
-	uint8 spd_vendor_name[8];
-	uint8 spd_product_description[16];
 	boolean present_3d;
 	boolean present_hdcp;
 	uint32 audio_data_blocks[16];
