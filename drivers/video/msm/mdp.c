@@ -1170,6 +1170,23 @@ static void mdp_hist_read_work(struct work_struct *data)
 	}
 	hist_ready = (mgmt->mdp_is_hist_init && mgmt->mdp_is_hist_valid);
 
+	if (!ret) {
+		switch (mgmt->block) {
+		case MDP_BLOCK_DMA_P:
+		case MDP_BLOCK_DMA_S:
+			ret = _mdp_histogram_read_dma_data(mgmt);
+			break;
+		case MDP_BLOCK_VG_1:
+		case MDP_BLOCK_VG_2:
+			ret = _mdp_histogram_read_vg_data(mgmt);
+			break;
+		default:
+			pr_err("%s, invalid MDP block = %d\n", __func__,
+								mgmt->block);
+			ret = -EINVAL;
+			goto error;
+		}
+	}
 	/*
 	 * if read was triggered by an underrun or failed copying,
 	 * don't wake up readers
@@ -1771,16 +1788,7 @@ void mdp_histogram_handle_isr(struct mdp_hist_mgmt *mgmt)
 		__mdp_histogram_kickoff(mgmt);
 
 	if (isr & INTR_HIST_DONE) {
-		if ((waitqueue_active(&mgmt->mdp_hist_comp.wait))
-			 && (mgmt->hist != NULL)) {
-			if (!queue_work(mdp_hist_wq,
-						&mgmt->mdp_histogram_worker)) {
-				pr_err("%s %d- can't queue hist_read\n",
-							 __func__, mgmt->block);
-			}
-		} else {
-			__mdp_histogram_reset(mgmt);
-		}
+		queue_work(mdp_hist_wq, &mgmt->mdp_histogram_worker);
 	}
 }
 
