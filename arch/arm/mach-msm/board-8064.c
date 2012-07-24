@@ -2956,6 +2956,8 @@ static void enable_avc_i2c_bus(void)
 
 static void __init apq8064_common_init(void)
 {
+	u32 platform_version;
+	platform_device_register(&msm_gpio_device);
 	msm_tsens_early_init(&apq_tsens_pdata);
 	msm_thermal_init(&msm_thermal_pdata);
 	if (socinfo_init() < 0)
@@ -3169,4 +3171,3 @@ MACHINE_START(MPQ8064_DTV, "QCT MPQ8064 DTV")
 	.init_very_early = apq8064_early_reserve,
 	.restart = msm_restart,
 MACHINE_END
-
