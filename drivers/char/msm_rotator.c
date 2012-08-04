@@ -187,13 +187,13 @@ int msm_rotator_iommu_map_buf(int mem_id, unsigned char src,
 		pr_err("ion_import_fd() failed\n");
 		return PTR_ERR(*pihdl);
 	}
-	pr_debug("%s(): ion_hdl %p, ion_fd %d\n", __func__, *pihdl,
-		ion_share_dma_buf(msm_rotator_dev->client, *pihdl));
 
 	if (rot_iommu_split_domain)
 	  domain = src ? ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN;
 	else
 	  domain = ROTATOR_SRC_DOMAIN;
+
+	pr_debug("%s(): ion_hdl %p, ion_fd %d\n", __func__, *pihdl, mem_id);
 
 	if (ion_map_iommu(msm_rotator_dev->client,
 		*pihdl,	domain, GEN_POOL,
