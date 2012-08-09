@@ -181,6 +181,7 @@ int clk_enable(struct clk *clk)
 	int ret = 0;
 	unsigned long flags;
 	struct clk *parent;
+	const char *name = clk ? clk->dbg_name : NULL;
 
 	if (!clk)
 		return 0;
@@ -188,10 +189,8 @@ int clk_enable(struct clk *clk)
 		return -EINVAL;
 
 	spin_lock_irqsave(&clk->lock, flags);
-	if (WARN(!clk->warned && !clk->prepare_count,
-				"%s: Don't call enable on unprepared clocks\n",
-				clk->dbg_name))
-		clk->warned = true;
+	WARN(!clk->prepare_count,
+			"%s: Don't call enable on unprepared clocks\n", name);
 	if (clk->count == 0) {
 		parent = clk_get_parent(clk);
 
@@ -202,10 +201,7 @@ int clk_enable(struct clk *clk)
 		if (ret)
 			goto err_enable_depends;
 
-		ret = vote_rate_vdd(clk, clk->rate);
-		if (ret)
-			goto err_vote_vdd;
-		trace_clock_enable(clk->dbg_name, 1, smp_processor_id());
+		trace_clock_enable(name, 1, smp_processor_id());
 		if (clk->ops->enable)
 			ret = clk->ops->enable(clk);
 		if (ret)
@@ -230,23 +226,22 @@ EXPORT_SYMBOL(clk_enable);
 
 void clk_disable(struct clk *clk)
 {
+	const char *name = clk ? clk->dbg_name : NULL;
 	unsigned long flags;
 
 	if (IS_ERR_OR_NULL(clk))
 		return;
 
 	spin_lock_irqsave(&clk->lock, flags);
-	if (WARN(!clk->warned && !clk->prepare_count,
-				"%s: Never called prepare or calling disable "
-				"after unprepare\n",
-				clk->dbg_name))
-		clk->warned = true;
-	if (WARN(clk->count == 0, "%s is unbalanced", clk->dbg_name))
+	WARN(!clk->prepare_count,
+			"%s: Never called prepare or calling disable after unprepare\n",
+			name);
+	if (WARN(clk->count == 0, "%s is unbalanced", name))
 		goto out;
 	if (clk->count == 1) {
 		struct clk *parent = clk_get_parent(clk);
 
-		trace_clock_disable(clk->dbg_name, 0, smp_processor_id());
+		trace_clock_disable(name, 0, smp_processor_id());
 		if (clk->ops->disable)
 			clk->ops->disable(clk);
 		unvote_rate_vdd(clk, clk->rate);
@@ -261,23 +256,20 @@ EXPORT_SYMBOL(clk_disable);
 
 void clk_unprepare(struct clk *clk)
 {
+	const char *name = clk ? clk->dbg_name : NULL;
+
 	if (IS_ERR_OR_NULL(clk))
 		return;
 
 	mutex_lock(&clk->prepare_lock);
-	if (!clk->prepare_count) {
-		if (WARN(!clk->warned, "%s is unbalanced (prepare)",
-				clk->dbg_name))
-			clk->warned = true;
+	if (WARN(!clk->prepare_count, "%s is unbalanced (prepare)", name))
 		goto out;
-	}
 	if (clk->prepare_count == 1) {
 		struct clk *parent = clk_get_parent(clk);
 
-		if (WARN(!clk->warned && clk->count,
+		WARN(clk->count,
 			"%s: Don't call unprepare when the clock is enabled\n",
-				clk->dbg_name))
-			clk->warned = true;
+			name);
 
 		if (clk->ops->unprepare)
 			clk->ops->unprepare(clk);
@@ -318,6 +310,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 {
 	unsigned long start_rate, flags;
 	int rc = 0;
+	const char *name = clk ? clk->dbg_name : NULL;
 
 	if (IS_ERR_OR_NULL(clk))
 		return -EINVAL;
@@ -331,8 +324,8 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	if (clk->rate == rate)
 		goto out;
 
-	trace_clock_set_rate(clk->dbg_name, rate, smp_processor_id());
-	if (clk->count) {
+	trace_clock_set_rate(name, rate, raw_smp_processor_id());
+	if (clk->prepare_count) {
 		start_rate = clk->rate;
 		/* Enforce vdd requirements for target frequency. */
 		rc = vote_rate_vdd(clk, rate);

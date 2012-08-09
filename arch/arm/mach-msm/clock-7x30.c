@@ -238,7 +238,6 @@ static struct fixed_clk tcxo_clk = {
 		.rate = 19200000,
 		.ops = &clk_ops_tcxo,
 		CLK_INIT(tcxo_clk.c),
-		.warned = true,
 	},
 };
 
@@ -265,7 +264,6 @@ static struct fixed_clk lpxo_clk = {
 		.rate = 24576000,
 		.ops = &clk_ops_lpxo,
 		CLK_INIT(lpxo_clk.c),
-		.warned = true,
 	},
 };
 
@@ -280,7 +278,6 @@ static struct pll_vote_clk pll1_clk = {
 		.rate = 768000000,
 		.ops = &clk_ops_pll_vote,
 		CLK_INIT(pll1_clk.c),
-		.warned = true,
 	},
 };
 
@@ -295,7 +292,6 @@ static struct pll_vote_clk pll2_clk = {
 		.rate = 806400000, /* TODO: Support scaling */
 		.ops = &clk_ops_pll_vote,
 		CLK_INIT(pll2_clk.c),
-		.warned = true,
 	},
 };
 
@@ -324,7 +320,6 @@ static struct pll_vote_clk pll4_clk = {
 		.rate = 891000000,
 		.ops = &clk_ops_pll_vote,
 		CLK_INIT(pll4_clk.c),
-		.warned = true,
 	},
 };
 
