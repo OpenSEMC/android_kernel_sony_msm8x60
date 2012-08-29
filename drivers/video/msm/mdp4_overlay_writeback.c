@@ -304,6 +304,9 @@ void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
 	/* move current committed iommu to freelist */
 	mdp4_overlay_iommu_pipe_free(pipe->pipe_ndx, 0);
 
+	/* move current committed iommu to freelist */
+	mdp4_overlay_iommu_pipe_free(pipe->pipe_ndx, 0);
+
 	mutex_lock(&mfd->writeback_mutex);
 	list_add_tail(&node->active_entry, &mfd->writeback_busy_queue);
 	mutex_unlock(&mfd->writeback_mutex);
