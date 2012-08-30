@@ -42,6 +42,9 @@
 #include <linux/android_pmem.h>
 #include <linux/leds.h>
 #include <linux/pm_runtime.h>
+#include <linux/sync.h>
+#include <linux/sw_sync.h>
+#include <linux/file.h>
 
 #define MSM_FB_C
 #include "msm_fb.h"
@@ -121,6 +124,9 @@ static void msm_fb_scale_bl(__u32 *bl_lvl);
 
 #define MSM_FB_MAX_DBGFS 1024
 #define MAX_BACKLIGHT_BRIGHTNESS 255
+
+/* 200 ms for time out */
+#define WAIT_FENCE_TIMEOUT 200
 
 int msm_fb_debugfs_file_index;
 struct dentry *msm_fb_debugfs_root;
@@ -427,6 +433,17 @@ static int msm_fb_probe(struct platform_device *pdev)
 #endif
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
+	if (mfd->timeline == NULL) {
+		mfd->timeline = sw_sync_timeline_create("mdp-timeline");
+		if (mfd->timeline == NULL) {
+			pr_err("%s: cannot create time line", __func__);
+			return -ENOMEM;
+		} else {
+			mfd->timeline_value = 0;
+		}
+	}
+
+
 	return 0;
 }
 
@@ -843,6 +860,7 @@ static void msmfb_early_resume(struct early_suspend *h)
 
 static int unset_bl_level, bl_updated;
 static int bl_level_old;
+
 static int mdp_bl_scale_config(struct msm_fb_data_type *mfd,
 						struct mdp_bl_scale_data *data)
 {
@@ -884,6 +902,7 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 {
 	struct msm_fb_panel_data *pdata;
 	__u32 temp = bkl_lvl;
+
 	if (!mfd->panel_power_on || !bl_updated) {
 		unset_bl_level = bkl_lvl;
 		return;
@@ -958,7 +977,6 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			mfd->panel_power_on = FALSE;
 			cancel_delayed_work_sync(&mfd->backlight_worker);
 			bl_updated = 0;
-
 			msleep(16);
 			ret = pdata->off(mfd->pdev);
 			if (ret)
@@ -1771,6 +1789,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct msm_fb_panel_data *pdata =
 		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	int i, ret;
 
 	/*
 	 * If framebuffer is 2, io pen display is not allowed.
@@ -1842,11 +1861,25 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	mutex_unlock(&msm_fb_notify_update_sem);
 
 	down(&msm_fb_pan_sem);
-
+	/* buf sync */
+	for (i = 0; i < mfd->acq_fen_cnt; i++) {
+		ret = sync_fence_wait(mfd->acq_fen[i], WAIT_FENCE_TIMEOUT);
+		sync_fence_put(mfd->acq_fen[i]);
+		if (ret < 0) {
+			pr_err("%s: sync_fence_wait failed! ret = %x\n",
+				__func__, ret);
+			break;
+		}
+	}
+	mfd->acq_fen_cnt = 0;
 	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
 		mdp_set_dma_pan_info(info, NULL, TRUE);
 		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
 			pr_err("%s: can't turn on display!\n", __func__);
+			if (mfd->timeline) {
+				sw_sync_timeline_inc(mfd->timeline, 2);
+				mfd->timeline_value += 2;
+			}
 			return -EINVAL;
 		}
 	}
@@ -1860,6 +1893,12 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 				     (var->activate == FB_ACTIVATE_VBL));
 	}
 	mdp_dma_pan_update(info);
+	if (mfd->timeline) {
+		sw_sync_timeline_inc(mfd->timeline, 1);
+		mfd->timeline_value++;
+	}
+	mfd->last_rel_fence = mfd->cur_rel_fence;
+	mfd->cur_rel_fence = 0;
 	up(&msm_fb_pan_sem);
 
 	if (pdata && pdata->power_on_panel_at_pan) {
@@ -3408,6 +3447,76 @@ static int msmfb_handle_metadata_ioctl(struct msm_fb_data_type *mfd,
 	}
 	return ret;
 }
+static int msmfb_handle_buf_sync_ioctl(struct msm_fb_data_type *mfd,
+						struct mdp_buf_sync *buf_sync)
+{
+	int i, fence_cnt = 0, ret;
+	int acq_fen_fd[MDP_MAX_FENCE_FD];
+	struct sync_fence *fence;
+
+	if ((buf_sync->acq_fen_fd_cnt == 0) ||
+		(buf_sync->acq_fen_fd_cnt > MDP_MAX_FENCE_FD) ||
+		(mfd->timeline == NULL))
+		return -EINVAL;
+
+	ret = copy_from_user(acq_fen_fd, buf_sync->acq_fen_fd,
+			buf_sync->acq_fen_fd_cnt * sizeof(int));
+	if (ret) {
+		pr_err("%s:copy_from_user failed", __func__);
+		return ret;
+	}
+	for (i = 0; i < buf_sync->acq_fen_fd_cnt; i++) {
+		fence = sync_fence_fdget(acq_fen_fd[i]);
+		if (fence == NULL) {
+			pr_info("%s: null fence! i=%d fd=%d\n", __func__, i,
+				acq_fen_fd[i]);
+			ret = -EINVAL;
+			break;
+		}
+		mfd->acq_fen[i] = fence;
+	}
+	fence_cnt = i;
+	if (ret)
+		goto buf_sync_err_1;
+	mfd->cur_rel_sync_pt = sw_sync_pt_create(mfd->timeline,
+			mfd->timeline_value + 2);
+	if (mfd->cur_rel_sync_pt == NULL) {
+		pr_err("%s: cannot create sync point", __func__);
+		ret = -ENOMEM;
+		goto buf_sync_err_1;
+	}
+	/* create fence */
+	mfd->cur_rel_fence = sync_fence_create("mdp-fence",
+			mfd->cur_rel_sync_pt);
+	if (mfd->cur_rel_fence == NULL) {
+		sync_pt_free(mfd->cur_rel_sync_pt);
+		mfd->cur_rel_sync_pt = NULL;
+		pr_err("%s: cannot create fence", __func__);
+		ret = -ENOMEM;
+		goto buf_sync_err_1;
+	}
+	/* create fd */
+	mfd->cur_rel_fen_fd = get_unused_fd_flags(0);
+	sync_fence_install(mfd->cur_rel_fence, mfd->cur_rel_fen_fd);
+	ret = copy_to_user(buf_sync->rel_fen_fd,
+		&mfd->cur_rel_fen_fd, sizeof(int));
+	if (ret) {
+		pr_err("%s:copy_to_user failed", __func__);
+		goto buf_sync_err_2;
+	}
+	mfd->acq_fen_cnt = buf_sync->acq_fen_fd_cnt;
+	return ret;
+buf_sync_err_2:
+	sync_fence_put(mfd->cur_rel_fence);
+	put_unused_fd(mfd->cur_rel_fen_fd);
+	mfd->cur_rel_fence = NULL;
+	mfd->cur_rel_fen_fd = 0;
+buf_sync_err_1:
+	for (i = 0; i < fence_cnt; i++)
+		sync_fence_put(mfd->acq_fen[i]);
+	mfd->acq_fen_cnt = 0;
+	return ret;
+}
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
@@ -3426,6 +3535,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_page_protection fb_page_protection;
 	struct msmfb_mdp_pp mdp_pp;
 	struct msmfb_metadata mdp_metadata;
+	struct mdp_buf_sync buf_sync;
 	int ret = 0;
 
 	switch (cmd) {
@@ -3710,6 +3820,16 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			return ret;
 
 		ret = msmfb_handle_pp_ioctl(mfd, &mdp_pp);
+		break;
+	case MSMFB_BUFFER_SYNC:
+		ret = copy_from_user(&buf_sync, argp, sizeof(buf_sync));
+		if (ret)
+			return ret;
+
+		ret = msmfb_handle_buf_sync_ioctl(mfd, &buf_sync);
+
+		if (!ret)
+			ret = copy_to_user(argp, &buf_sync, sizeof(buf_sync));
 		break;
 
 	case MSMFB_METADATA_SET:
