@@ -56,6 +56,7 @@ static struct vsycn_ctrl {
 	int wait_vsync_cnt;
 	int blt_change;
 	int blt_free;
+	int blt_ctrl;
 	int sysfs_created;
 	struct mutex update_lock;
 	struct completion ov_comp;
@@ -535,6 +536,7 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 
 	vctrl->mfd = mfd;
 	vctrl->dev = mfd->fbi->dev;
+	vctrl->blt_ctrl = pinfo->lcd.blt_ctrl;
 
 	/* mdp clock on */
 	mdp_clk_ctrl(1);
