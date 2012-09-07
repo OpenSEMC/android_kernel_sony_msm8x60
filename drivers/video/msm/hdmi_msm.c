@@ -825,6 +825,7 @@ static void hdmi_msm_send_event(boolean on)
 
 		DEV_INFO("HDMI HPD: CONNECTED: send ONLINE\n");
 		kobject_uevent(external_common_state->uevent_kobj, KOBJ_ONLINE);
+
 		if (!hdmi_msm_state->hdcp_enable) {
 			/* Send Audio for HDMI Compliance Cases*/
 			envp[0] = "HDCP_STATE=PASS";
@@ -832,9 +833,6 @@ static void hdmi_msm_send_event(boolean on)
 			DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
 			kobject_uevent_env(external_common_state->uevent_kobj,
 				KOBJ_CHANGE, envp);
-			if (!hdmi_msm_is_dvi_mode())
-				switch_set_state(&external_common_state->
-							audio_sdev, 1);
 		}
 	} else {
 		switch_set_state(&external_common_state->sdev, 0);
@@ -4290,6 +4288,7 @@ static void hdmi_msm_turn_on(void)
 	hdmi_msm_spd_infoframe_packetsetup();
 
 	if (hdmi_msm_state->hdcp_enable && hdmi_msm_state->reauth) {
+		hdmi_msm_hdcp_enable();
 		hdmi_msm_state->reauth = FALSE ;
 		cancel_work_sync(&hdmi_msm_state->hdcp_reauth_work);
 		del_timer_sync(&hdmi_msm_state->hdcp_timer);
@@ -4616,16 +4615,6 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	}
 	mutex_unlock(&hdmi_msm_state_mutex);
 
-	envp[0] = "HDCP_STATE=FAIL";
-	envp[1] = NULL;
-	DEV_INFO("HDMI HPD: QDSP OFF\n");
-	kobject_uevent_env(external_common_state->uevent_kobj,
-			   KOBJ_CHANGE, envp);
-	switch_set_state(&external_common_state->sdev, 0);
-	switch_set_state(&external_common_state->audio_sdev, 0);
-	DEV_INFO("Hdmi state switch to %d: %s\n",
-		external_common_state->sdev.state, __func__);
-
 	DEV_INFO("power: OFF (audio off, Reset Core)\n");
 	hdmi_msm_audio_off();
 	hdcp_deauthenticate();
@@ -4637,11 +4626,6 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 		complete(&hdmi_msm_state->hpd_event_processed);
 
 	return 0;
-}
-
-bool mhl_is_enabled(void)
-{
-	return hdmi_msm_state->is_mhl_enabled;
 }
 
 void hdmi_msm_config_hdcp_feature(void)
@@ -5072,6 +5056,15 @@ static int set_hdcp_feature_on(const char *val, const struct kernel_param *kp)
 		return rv;
 
 	pr_debug("%s: HDCP feature = %d\n", __func__, hdcp_feature_on);
+	if (hdmi_msm_state) {
+		if ((HDMI_INP(0x0250) & 0x2)) {
+			pr_err("%s: Unable to set HDCP feature", __func__);
+			pr_err("%s: HDMI panel is currently turned on",
+					__func__);
+		} else if (hdcp_feature_on != hdmi_msm_state->hdcp_enable) {
+			hdmi_msm_config_hdcp_feature();
+		}
+	}
 
 	return 0;
 }
