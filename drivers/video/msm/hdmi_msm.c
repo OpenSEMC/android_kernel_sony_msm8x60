@@ -5064,8 +5064,6 @@ static void __exit hdmi_msm_exit(void)
 	platform_driver_unregister(&this_driver);
 }
 
-/* SoMC: disabled for production due to security reasons */
-#if 1
 static int set_hdcp_feature_on(const char *val, const struct kernel_param *kp)
 {
 	int rv = param_set_bool(val, kp);
@@ -5074,15 +5072,6 @@ static int set_hdcp_feature_on(const char *val, const struct kernel_param *kp)
 		return rv;
 
 	pr_debug("%s: HDCP feature = %d\n", __func__, hdcp_feature_on);
-	if (hdmi_msm_state) {
-		if ((HDMI_INP(0x0250) & 0x2)) {
-			pr_err("%s: Unable to set HDCP feature", __func__);
-			pr_err("%s: HDMI panel is currently turned on",
-					__func__);
-		} else if (hdcp_feature_on != hdmi_msm_state->hdcp_enable) {
-			hdmi_msm_config_hdcp_feature();
-		}
-	}
 
 	return 0;
 }
@@ -5095,7 +5084,6 @@ static struct kernel_param_ops hdcp_feature_on_param_ops = {
 module_param_cb(hdcp, &hdcp_feature_on_param_ops, &hdcp_feature_on,
 			S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hdcp, "Enable or Disable HDCP");
-#endif
 
 module_init(hdmi_msm_init);
 module_exit(hdmi_msm_exit);
