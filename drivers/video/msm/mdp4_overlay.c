@@ -3527,7 +3527,7 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 	return 0;
 }
 
-struct msm_iommu_ctx {
+static struct {
 	char *name;
 	int  domain;
 };

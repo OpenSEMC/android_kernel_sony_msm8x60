@@ -381,7 +381,7 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 	if (wait) {
 		long long tick;
 
-		mdp4_dsi_cmd_wait4vsync(cndx, &tick);
+		mdp4_dsi_cmd_wait4vsync(0, &tick);
 	}
 
 	return cnt;
@@ -1133,7 +1133,7 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
 	unsigned long flags;
-	long long xx;
+	long long tick;
 
 	vctrl = &vsync_ctrl_db[cndx];
 
@@ -1174,10 +1174,10 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
 	mutex_lock(&mfd->dma->ov_mutex);
-	mdp4_dsi_cmd_pipe_commit();
+	mdp4_dsi_cmd_pipe_commit(0, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 
-	mdp4_dsi_cmd_wait4vsync(0, &xx);
+	mdp4_dsi_cmd_wait4vsync(0, &tick);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
