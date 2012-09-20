@@ -184,7 +184,7 @@ uint32_t mdp_block2base(uint32_t block)
 		base = 0x18000;
 		break;
 	case MDP_BLOCK_OVERLAY_2:
-		base = (mdp_rev >= MDP_REV_44) ? 0x88000 : 0;
+		base = (mdp_rev >= MDP_REV_43) ? 0x88000 : 0;
 		break;
 	default:
 		break;
@@ -2431,6 +2431,7 @@ static int mdp_probe(struct platform_device *pdev)
 	struct mipi_panel_info *mipi;
 #endif
 	static int contSplash_update_done;
+	unsigned int mdp_r = 0;
 
 	if ((pdev->id == 0) && (pdev->num_resources > 0)) {
 		mdp_init_pdev = pdev;
@@ -2452,7 +2453,18 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 
 		mdp_rev = mdp_pdata->mdp_rev;
+/* FIXME */
 		mdp_iommu_split_domain = mdp_pdata->mdp_iommu_split_domain;
+/* FIXME END */
+		if (mdp_rev == MDP_REV_42) {
+			mdp_r = inpdw(MDP_BASE + 0x0);
+			mdp_r = ((mdp_r & 0x30000) >> 16);
+			if (mdp_r == 3) {
+				mdp_rev = MDP_REV_43;
+				mdp_pdata->mdp_rev = MDP_REV_43;
+			}
+		}
+>>>>>>> 9ff4027... msm_fb: configure LM1 and LM2 CSC coefficients with RGB2YUV for WFD
 
 		rc = mdp_irq_clk_setup(pdev, mdp_pdata->cont_splash_enabled);
 
