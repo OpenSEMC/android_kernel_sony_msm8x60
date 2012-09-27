@@ -1763,7 +1763,32 @@ static int msm_fb_release(struct fb_info *info, int user)
 	return ret;
 }
 
-DEFINE_SEMAPHORE(msm_fb_pan_sem);
+int msm_fb_wait_for_fence(struct msm_fb_data_type *mfd)
+{
+	int i, ret = 0;
+	/* buf sync */
+	for (i = 0; i < mfd->acq_fen_cnt; i++) {
+		ret = sync_fence_wait(mfd->acq_fen[i], WAIT_FENCE_TIMEOUT);
+		sync_fence_put(mfd->acq_fen[i]);
+		if (ret < 0) {
+			pr_err("%s: sync_fence_wait failed! ret = %x\n",
+				__func__, ret);
+			break;
+		}
+	}
+	mfd->acq_fen_cnt = 0;
+	return ret;
+}
+int msm_fb_signal_timeline(struct msm_fb_data_type *mfd)
+{
+	if (mfd->timeline) {
+		sw_sync_timeline_inc(mfd->timeline, 1);
+		mfd->timeline_value++;
+	}
+	mfd->last_rel_fence = mfd->cur_rel_fence;
+	mfd->cur_rel_fence = 0;
+	return 0;
+}
 
 static void bl_workqueue_handler(struct work_struct *work)
 {
@@ -1781,6 +1806,7 @@ static void bl_workqueue_handler(struct work_struct *work)
 	}
 }
 
+DEFINE_SEMAPHORE(msm_fb_pan_sem);
 static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 			      struct fb_info *info)
 {
@@ -1861,17 +1887,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	mutex_unlock(&msm_fb_notify_update_sem);
 
 	down(&msm_fb_pan_sem);
-	/* buf sync */
-	for (i = 0; i < mfd->acq_fen_cnt; i++) {
-		ret = sync_fence_wait(mfd->acq_fen[i], WAIT_FENCE_TIMEOUT);
-		sync_fence_put(mfd->acq_fen[i]);
-		if (ret < 0) {
-			pr_err("%s: sync_fence_wait failed! ret = %x\n",
-				__func__, ret);
-			break;
-		}
-	}
-	mfd->acq_fen_cnt = 0;
+	msm_fb_wait_for_fence(mfd);
 	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
 		mdp_set_dma_pan_info(info, NULL, TRUE);
 		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
@@ -1893,12 +1909,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 				     (var->activate == FB_ACTIVATE_VBL));
 	}
 	mdp_dma_pan_update(info);
-	if (mfd->timeline) {
-		sw_sync_timeline_inc(mfd->timeline, 1);
-		mfd->timeline_value++;
-	}
-	mfd->last_rel_fence = mfd->cur_rel_fence;
-	mfd->cur_rel_fence = 0;
+	msm_fb_signal_timeline(mfd);
 	up(&msm_fb_pan_sem);
 
 	if (pdata && pdata->power_on_panel_at_pan) {
