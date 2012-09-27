@@ -3525,6 +3525,8 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
+	msm_fb_wait_for_fence(mfd);
+
 	if (mixer == MDP4_MIXER0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD) {
 			/* cndx = 0 */
@@ -3537,6 +3539,7 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 			mdp4_lcdc_pipe_commit(0, 1);
 		}
 	}
+	msm_fb_signal_timeline(mfd);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 
