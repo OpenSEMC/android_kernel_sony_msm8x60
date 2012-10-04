@@ -1167,12 +1167,11 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	}
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
-
-	mutex_lock(&mfd->dma->ov_mutex);
 	mdp4_dsi_cmd_pipe_commit(cndx, 0);
 	if (need_dmap_wait)
 		mdp4_dsi_cmd_wait4dmap(0);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
+
 }
