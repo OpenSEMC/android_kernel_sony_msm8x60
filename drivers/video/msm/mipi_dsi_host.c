@@ -1597,7 +1597,7 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 	dsi_ctrl = MIPI_INP(MIPI_DSI_BASE + 0x0000);
 	if (dsi_ctrl & 0x02) {
 		/* video mode, make sure dsi_cmd_mdp is busy
-		 * sodcs command will be txed at start of BLLP
+		 * so dcs command will be txed at start of BLLP
 		 */
 		mipi_dsi_wait_for_video_eng_busy();
 	} else {
