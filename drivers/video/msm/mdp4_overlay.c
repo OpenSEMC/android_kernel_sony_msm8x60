@@ -2023,8 +2023,7 @@ void mdp4_mixer_blend_setup(int mixer)
 			blend->op = (MDP4_BLEND_FG_ALPHA_BG_PIXEL |
 				MDP4_BLEND_FG_INV_ALPHA);
 			if ((!(d_pipe->flags & MDP_BLEND_FG_PREMULT)) &&
-					((i != MDP4_MIXER_STAGE0) ||
-						(!base_premulti)))
+					((i != MDP4_MIXER_STAGE0)))
 				blend->op |=
 					MDP4_BLEND_BG_ALPHA_BG_PIXEL;
 			else
@@ -3554,9 +3553,6 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 			/* cndx = 0 */
 			mdp4_lcdc_pipe_commit(0, 1);
 		}
-	} else if (mixer == MDP4_MIXER1) {
-		if (ctrl->panel_mode & MDP4_PANEL_DTV)
-			mdp4_dtv_pipe_commit(0, 1);
 	}
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
