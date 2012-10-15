@@ -3211,9 +3211,9 @@ int mdp4_overlay_vsync_ctrl(struct fb_info *info, int enable)
 		else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
 			mdp4_dsi_cmd_vsync_ctrl(info, cmd);
 		else if (ctrl->panel_mode & MDP4_PANEL_LCDC)
-			mdp4_lcdc_vsync_ctrl(0, cmd);
+			mdp4_lcdc_vsync_ctrl(info, cmd);
 		else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
-			mdp4_mddi_vsync_ctrl(0, cmd);
+			mdp4_mddi_vsync_ctrl(info, cmd);
 	} else if (hdmi_prim_display || info->node == 1) {
 		mdp4_dtv_vsync_ctrl(0, cmd);
 	}
