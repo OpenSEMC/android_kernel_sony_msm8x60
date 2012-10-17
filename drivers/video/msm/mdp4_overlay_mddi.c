@@ -370,6 +370,9 @@ void mdp4_dma_p_done_mddi(struct mdp_dma_data *dma)
 	pr_debug("%s: ov_cnt=%d dmap_cnt=%d\n",
 			__func__, mddi_pipe->ov_cnt, mddi_pipe->dmap_cnt);
 
+	if (mdp_rev <= MDP_REV_41)
+		mdp4_mixer_blend_cfg(MDP4_MIXER0);
+
 	if (diff <= 0) {
 		spin_lock(&mdp_spin_lock);
 		dma->dmap_busy = FALSE;
