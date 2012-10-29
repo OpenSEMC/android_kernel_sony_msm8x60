@@ -80,6 +80,7 @@ static struct vsycn_ctrl {
 	struct completion dmae_comp;
 	struct completion vsync_comp;
 	spinlock_t spin_lock;
+	struct msm_fb_data_type *mfd;
 	struct mdp4_overlay_pipe *base_pipe;
 	struct vsync_update vlist[2];
 	int vsync_irq_enabled;
@@ -224,11 +225,18 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 	}
 	mixer = pipe->mixer_num;
 
+	mdp_update_pm(vctrl->mfd, vctrl->vsync_time);
+
 	/*
 	 * allow stage_commit without pipes queued
 	 * (vp->update_cnt == 0) to unstage pipes after
 	 * overlay_unset
 	 */
+
+	if (vp->update_cnt == 0) {
+		mutex_unlock(&vctrl->update_lock);
+		return 0;
+	}
 
 	vctrl->update_ndx++;
 	vctrl->update_ndx &= 0x01;
@@ -524,6 +532,9 @@ static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
 	uint32_t userformat;
 	struct fb_info *fbi;
 	struct fb_var_screeninfo *var;
+	struct vsycn_ctrl *vctrl;
+
+	vctrl = &vsync_ctrl_db[0];
 
 	if (!mfd)
 		return -ENODEV;
@@ -533,6 +544,8 @@ static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
 
 	fbi = mfd->fbi;
 	var = &fbi->var;
+
+	vctrl->mfd = mfd;
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	if (hdmi_prim_display) {
@@ -1180,7 +1193,6 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 		pipe->srcp0_addr = (uint32)mfd->ibuf.buf;
 		mdp4_dtv_pipe_queue(0, pipe);
 	}
-	mdp_update_pm(mfd, vsync_ctrl_db[0].vsync_time);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 	mdp4_dtv_pipe_commit(0, 0);
