@@ -833,8 +833,8 @@ static void hdmi_msm_send_event(boolean on)
 		/* Build EDID table */
 		hdmi_msm_read_edid();
 		switch_set_state(&external_common_state->sdev, 1);
-		DEV_INFO("Hdmi state switched to %d: %s\n",
-			external_common_state->sdev.state,  __func__);
+		DEV_INFO("%s: hdmi state switched to %d\n", __func__,
+				external_common_state->sdev.state);
 
 		DEV_INFO("HDMI HPD: CONNECTED: send ONLINE\n");
 		kobject_uevent(external_common_state->uevent_kobj, KOBJ_ONLINE);
@@ -851,8 +851,8 @@ static void hdmi_msm_send_event(boolean on)
 		}
 	} else {
 		switch_set_state(&external_common_state->sdev, 0);
-		DEV_INFO("hdmi: Hdmi state switch to %d: %s\n",
-			external_common_state->sdev.state,  __func__);
+		DEV_INFO("%s: hdmi state switch to %d\n", __func__,
+				external_common_state->sdev.state);
 		DEV_INFO("hdmi: HDMI HPD: sense DISCONNECTED: send OFFLINE\n");
 		kobject_uevent(external_common_state->uevent_kobj,
 			KOBJ_OFFLINE);
@@ -1035,10 +1035,6 @@ int hdmi_msm_process_hdcp_interrupts(void)
 		DEV_INFO("HDCP: AUTH_FAIL_INT received, LINK0_STATUS=0x%08x\n",
 			link_status);
 		if (hdmi_msm_state->full_auth_done) {
-			switch_set_state(&external_common_state->sdev, 0);
-			DEV_INFO("Hdmi state switched to %d: %s\n",
-				external_common_state->sdev.state,  __func__);
-
 			SWITCH_SET_HDMI_AUDIO(0, 0);
 
 			envp[0] = "HDCP_STATE=FAIL";
@@ -3184,9 +3180,6 @@ static void hdmi_msm_hdcp_enable(void)
 		SWITCH_SET_HDMI_AUDIO(1, 0);
 	}
 
-	switch_set_state(&external_common_state->sdev, 1);
-	DEV_INFO("Hdmi state switched to %d: %s\n",
-		external_common_state->sdev.state, __func__);
 	return;
 
 error:
@@ -3206,9 +3199,6 @@ error:
 			queue_work(hdmi_work_queue,
 			    &hdmi_msm_state->hdcp_reauth_work);
 	}
-	switch_set_state(&external_common_state->sdev, 0);
-	DEV_INFO("Hdmi state switched to %d: %s\n",
-		external_common_state->sdev.state, __func__);
 }
 
 static void hdmi_msm_video_setup(int video_format)
@@ -4983,6 +4973,9 @@ static int hdmi_msm_hpd_feature(int on)
 				hdmi_msm_state->pd->coupled_mhl_device,
 				FALSE);
 #endif
+
+		DEV_INFO("%s: hdmi state switched to %d\n", __func__,
+				external_common_state->sdev.state);
 	}
 
 	return rc;
