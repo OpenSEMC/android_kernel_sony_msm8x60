@@ -192,28 +192,7 @@ struct msm_fb_data_type {
 	u32 writeback_state;
 	bool writeback_active_cnt;
 	int cont_splash_done;
-	u32 acq_fen_cnt;
-	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
-	int acq_fen_fd[MDP_MAX_FENCE_FD];
-	int cur_rel_fen_fd;
-	struct sync_pt *cur_rel_sync_pt;
-	struct sync_fence *cur_rel_fence;
-	struct sync_fence *last_rel_fence;
-	struct sw_sync_timeline *timeline;
-	int timeline_value;
-	struct mutex sync_mutex;
-	struct completion commit_comp;
-	u32 is_committing;
-	struct work_struct commit_work;
-	void *msm_fb_backup;
-	boolean panel_driver_on;
-	struct mutex entry_mutex;
 	int vsync_sysfs_created;
-};
-struct msm_fb_backup_type {
-	struct fb_info info;
-	struct fb_var_screeninfo var;
-	struct msm_fb_data_type mfd;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
