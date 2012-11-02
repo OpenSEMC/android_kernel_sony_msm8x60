@@ -3243,20 +3243,6 @@ static int msmfb_overlay_play_wait(struct fb_info *info, unsigned long *argp)
 	return ret;
 }
 
-static int msmfb_overlay_commit(struct fb_info *info, unsigned long *argp)
-{
-	int ret, ndx;
-
-	ret = copy_from_user(&ndx, argp, sizeof(ndx));
-	if (ret) {
-		printk(KERN_ERR "%s:msmfb_overlay_commit ioctl failed\n",
-			__func__);
-		return ret;
-	}
-
-	return mdp4_overlay_commit(info, ndx);
-}
-
 static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 {
 	int	ret;
@@ -3805,20 +3791,25 @@ static int msmfb_display_commit(struct fb_info *info,
 		pr_err("%s:copy_from_user failed", __func__);
 		return ret;
 	}
-	buf_fence = &disp_commit.buf_fence;
-	if (buf_fence->acq_fen_fd_cnt > 0)
-		ret = buf_fence_process(mfd, buf_fence);
-	if ((!ret) && (buf_fence->rel_fen_fd[0] > 0))
-		copy_back = TRUE;
 
-	ret = msm_fb_pan_display_ex(&disp_commit.var,
+	if (disp_commit.flags & MDP_DISPLAY_COMMIT_OVERLAY) {
+		ret = mdp4_overlay_commit(info);
+	} else {
+		buf_fence = &disp_commit.buf_fence;
+		if (buf_fence->acq_fen_fd_cnt > 0)
+			ret = buf_fence_process(mfd, buf_fence);
+		if ((!ret) && (buf_fence->rel_fen_fd[0] > 0))
+			copy_back = TRUE;
+
+		ret = msm_fb_pan_display_ex(&disp_commit.var,
 			      info, disp_commit.wait_for_finish);
 
-	if (copy_back) {
-		ret = copy_to_user(argp,
-			&disp_commit, sizeof(disp_commit));
-		if (ret)
-			pr_err("%s:copy_to_user failed", __func__);
+		if (copy_back) {
+			ret = copy_to_user(argp,
+				&disp_commit, sizeof(disp_commit));
+			if (ret)
+				pr_err("%s:copy_to_user failed", __func__);
+		}
 	}
 	return ret;
 }
