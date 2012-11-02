@@ -3508,15 +3508,18 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 }
 #endif
 
-int mdp4_overlay_commit(struct fb_info *info, int mixer)
+int mdp4_overlay_commit(struct fb_info *info)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+	int mixer;
 
 	if (mfd == NULL)
 		return -ENODEV;
 
 	if (!mfd->panel_power_on) /* suspended */
 		return -EINVAL;
+
+	mixer = mfd->panel_info.pdest;	/* DISPLAY_1 or DISPLAY_2 */
 
 	if (mixer >= MDP4_MIXER_MAX)
 		return -EPERM;
