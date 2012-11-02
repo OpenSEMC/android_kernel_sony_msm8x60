@@ -1332,7 +1332,7 @@ static void vsync_isr_handler(void)
 	vsync_cntrl.vsync_time = ktime_get();
 }
 
-static ssize_t vsync_show_event(struct device *dev,
+ssize_t mdp_dma_show_event(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -2176,15 +2176,6 @@ void mdp4_hw_init(void)
 }
 
 #endif
-static DEVICE_ATTR(vsync_event, S_IRUGO, vsync_show_event, NULL);
-static struct attribute *vsync_fs_attrs[] = {
-	&dev_attr_vsync_event.attr,
-	NULL,
-};
-static struct attribute_group vsync_fs_attr_group = {
-	.attrs = vsync_fs_attrs,
-};
-
 static int mdp_on(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -2220,22 +2211,6 @@ static int mdp_on(struct platform_device *pdev)
 
 		vsync_cntrl.dev = mfd->fbi->dev;
 		atomic_set(&vsync_cntrl.suspend, 1);
-	}
-
-		if (!vsync_cntrl.sysfs_created) {
-			ret = sysfs_create_group(&vsync_cntrl.dev->kobj,
-				&vsync_fs_attr_group);
-			if (ret) {
-				pr_err("%s: sysfs creation failed, ret=%d\n",
-					__func__, ret);
-				return ret;
-			}
-
-			kobject_uevent(&vsync_cntrl.dev->kobj, KOBJ_ADD);
-			pr_debug("%s: kobject_uevent(KOBJ_ADD)\n", __func__);
-			vsync_cntrl.sysfs_created = 1;
-		}
-		atomic_set(&vsync_cntrl.suspend, 0);
 	}
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
