@@ -1013,8 +1013,9 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev)
 	mdp4_iommu_attach();
 
 	atomic_set(&vctrl->suspend, 0);
+	pr_info("%s-:\n", __func__);
 
-	pr_debug("%s-:\n", __func__);
+
 	return ret;
 }
 
