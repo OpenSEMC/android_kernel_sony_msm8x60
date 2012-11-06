@@ -124,6 +124,7 @@ config ARCH_MSM8X60
 	select MSM_SPM_V1
 	select MSM_SCM if SMP
 	select MULTI_IRQ_HANDLER
+	select MSM_IOMMU_GPU_SYNC
 	select MSM_PM8X60 if PM
 
 config ARCH_MSM8960
@@ -164,6 +165,7 @@ config ARCH_MSM8960
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_IOMMU_GPU_SYNC
 
 config ARCH_MSM8930
 	bool "MSM8930"
@@ -203,6 +205,7 @@ config ARCH_MSM8930
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_IOMMU_GPU_SYNC
 
 config ARCH_APQ8064
 	bool "APQ8064"
@@ -221,6 +224,7 @@ config ARCH_APQ8064
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_IOMMU_GPU_SYNC
 
 config ARCH_MSMCOPPER
 	bool "MSM Copper"
