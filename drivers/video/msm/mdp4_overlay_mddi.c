@@ -717,6 +717,15 @@ void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 			complete(&mfd->pan_comp);
 		}
 	}
+
+	mdp4_overlay_mdp_pipe_req(pipe, mfd);
+
+	mdp4_overlay_mdp_perf_req(mfd, pipe);
+
+	mdp4_overlay_mdp_perf_upd(mfd, 1);
+
+	mutex_lock(&mfd->dma->ov_mutex);
+	mdp4_mddi_pipe_commit();
 	mutex_unlock(&mfd->dma->ov_mutex);
 }
 
