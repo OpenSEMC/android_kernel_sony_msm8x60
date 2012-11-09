@@ -133,6 +133,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	return ret;
 }
 
+extern struct mdp4_overlay_perf perf_current;
 static int mipi_dsi_on(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -317,6 +318,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
+	perf_current.mdp_bw = OVERLAY_PERF_LEVEL4;
+	perf_current.mdp_clk_rate = 0;
 #endif
 
 	if (mdp_rev >= MDP_REV_41)
