@@ -3544,6 +3544,12 @@ end:
 	return ret;
 }
 
+#ifndef CONFIG_MSMFB_OVERLAY_DTV
+int mdp4_dtv_pipe_commit(int cndx, int wait)
+{
+}
+#endif
+
 int mdp4_overlay_commit(struct fb_info *info, int mixer)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
