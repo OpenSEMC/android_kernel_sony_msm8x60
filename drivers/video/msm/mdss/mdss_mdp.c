@@ -292,9 +292,12 @@ int mdss_mdp_bus_scale_set_min_quota(u32 quota)
 		}
 	}
 
-	if (lvl == bus_pdata->num_usecases) {
-		pr_warn("cannot match quota=%u try with max level\n", quota);
-		lvl--;
+		vect = mdp_bus_scale_table.usecase[bus_idx].vectors;
+		vect->ab = ab_quota;
+		vect->ib = ib_quota;
+
+		pr_debug("bus scale idx=%d ab=%llu ib=%llu\n", bus_idx,
+				vect->ab, vect->ib);
 	}
 
 	return msm_bus_scale_client_update_request(mdss_res->bus_hdl, lvl);
