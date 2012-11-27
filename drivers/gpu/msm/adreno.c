@@ -1574,6 +1574,53 @@ static unsigned int _get_context_id(struct kgsl_context *k_ctxt)
 	return context_id;
 }
 
+static void adreno_next_event(struct kgsl_device *device,
+	struct kgsl_event *event)
+{
+	int status;
+	unsigned int ref_ts, enableflag;
+
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
+
+	status = kgsl_check_timestamp(device, event->timestamp);
+	if (!status) {
+		kgsl_sharedmem_readl(&device->memstore, &enableflag,
+			KGSL_DEVICE_MEMSTORE_OFFSET(ts_cmp_enable));
+		mb();
+
+		if (enableflag) {
+			kgsl_sharedmem_readl(&device->memstore, &ref_ts,
+				KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts));
+			mb();
+			if (timestamp_cmp(ref_ts, event->timestamp) >= 0) {
+				kgsl_sharedmem_writel(&device->memstore,
+				KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts),
+				event->timestamp);
+				wmb();
+			}
+		} else {
+			unsigned int cmds[2];
+			kgsl_sharedmem_writel(&device->memstore,
+				KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts),
+				event->timestamp);
+			enableflag = 1;
+			kgsl_sharedmem_writel(&device->memstore,
+				KGSL_DEVICE_MEMSTORE_OFFSET(ts_cmp_enable),
+				enableflag);
+			wmb();
+			/* submit a dummy packet so that even if all
+			* commands upto timestamp get executed we will still
+			* get an interrupt */
+			cmds[0] = cp_type3_packet(CP_NOP, 1);
+			cmds[1] = 0;
+
+			adreno_ringbuffer_issuecmds(device,
+					adreno_dev->drawctxt_active,
+					KGSL_CMD_FLAGS_NONE, &cmds[0], 2);
+		}
+	}
+}
+
 static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
 		struct kgsl_context *context, unsigned int timestamp)
 {
@@ -1965,6 +2012,7 @@ static const struct kgsl_functable adreno_functable = {
 	.drawctxt_create = adreno_drawctxt_create,
 	.drawctxt_destroy = adreno_drawctxt_destroy,
 	.setproperty = adreno_setproperty,
+	.next_event = adreno_next_event,
 };
 
 static struct platform_device_id adreno_id_table[] = {
