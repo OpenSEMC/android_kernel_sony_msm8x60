@@ -327,6 +327,7 @@ void mdp4_dsi_video_wait4vsync(int cndx, long long *vtime)
 static void mdp4_dsi_video_wait4dmap(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
+	int ret;
 
 	if (cndx >= MAX_CONTROLLER) {
 		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
@@ -338,9 +339,24 @@ static void mdp4_dsi_video_wait4dmap(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
+/* OLD CODE
 	if (!wait_for_completion_timeout(
 			&vctrl->dmap_comp, msecs_to_jiffies(100)))
 		pr_err("%s %d  TIMEOUT_\n", __func__, __LINE__);
+OLD CODE */
+
+	ret = wait_for_completion_interruptible_timeout(
+			&vctrl->dmap_comp,
+		msecs_to_jiffies(WAIT_FOR_COMPLETION_TIMEOUT));
+	if (ret < 0) {
+		pr_err("%s wait for completion error %x",
+			__func__, ret);
+		return;
+	} else if (!ret) {
+		pr_err("%s wait for commit_comp timeout",
+			__func__);
+		wait_for_completion(&vctrl->dmap_comp);
+	}
 }
 
 
@@ -367,6 +383,7 @@ static void mdp4_dsi_video_wait4dmap_done(int cndx)
 static void mdp4_dsi_video_wait4ov(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
+	int ret;
 
 	if (cndx >= MAX_CONTROLLER) {
 		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
@@ -378,9 +395,25 @@ static void mdp4_dsi_video_wait4ov(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
+/* OLD CODE
 	if (!wait_for_completion_timeout(
 			&vctrl->ov_comp, msecs_to_jiffies(100)))
 		pr_err("%s %d  TIMEOUT_\n", __func__, __LINE__);
+OLD CODE */
+
+	ret = wait_for_completion_interruptible_timeout(
+			&vctrl->ov_comp,
+		msecs_to_jiffies(WAIT_FOR_COMPLETION_TIMEOUT));
+	if (ret < 0) {
+		pr_err("%s wait for completion error %x",
+			__func__, ret);
+		return;
+	} else if (!ret) {
+		pr_err("%s wait for commit_comp timeout",
+			__func__);
+		wait_for_completion(&vctrl->ov_comp);
+	}
+
 }
 
 ssize_t mdp4_dsi_video_show_event(struct device *dev,
