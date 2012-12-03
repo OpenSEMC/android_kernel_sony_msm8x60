@@ -886,7 +886,7 @@ static int mdp_histogram_disable(struct mdp_hist_mgmt *mgmt)
 	outp32(MDP_INTR_CLEAR, mgmt->intr);
 	mdp_intr_mask &= ~mgmt->intr;
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
-	mdp_disable_irq(mgmt->irq_term);
+	mdp_disable_irq_nosync(mgmt->irq_term);
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 
 	if (mdp_rev >= MDP_REV_42)
@@ -2464,7 +2464,6 @@ static int mdp_probe(struct platform_device *pdev)
 				mdp_pdata->mdp_rev = MDP_REV_43;
 			}
 		}
->>>>>>> 9ff4027... msm_fb: configure LM1 and LM2 CSC coefficients with RGB2YUV for WFD
 
 		rc = mdp_irq_clk_setup(pdev, mdp_pdata->cont_splash_enabled);
 
