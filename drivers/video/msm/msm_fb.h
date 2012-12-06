@@ -194,6 +194,10 @@ struct msm_fb_data_type {
 	int cont_splash_done;
 	int vsync_sysfs_created;
 };
+struct msm_fb_backup_type {
+	struct fb_info info;
+	struct mdp_display_commit disp_commit;
+};
 
 struct dentry *msm_fb_get_debugfs_root(void);
 void msm_fb_debugfs_file_create(struct dentry *root, const char *name,
