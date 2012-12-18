@@ -358,7 +358,7 @@ enum {
 
 /*
  * mdp_histogram_start_req is used to provide the parameters for
- * histogram start request
+ *histogram start request
  */
 
 struct mdp_histogram_start_req {
