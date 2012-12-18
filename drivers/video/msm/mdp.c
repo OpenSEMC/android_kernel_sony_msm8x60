@@ -1835,12 +1835,7 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 				if (!mgmt)
 					continue;
 
-				base_addr = MDP_BASE + mgmt->base;
-				outpdw(base_addr + 0x010, 1);
-				outpdw(base_addr + 0x01C, INTR_HIST_DONE |
-						INTR_HIST_RESET_SEQ_DONE);
 				mgmt->mdp_is_hist_valid = FALSE;
-				__mdp_histogram_reset(mgmt);
 			}
 		}
 
