@@ -4036,7 +4036,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			goto msm_fb_ioctl_exit;
 		}
 
-		if (!mfd->do_histogram) {
+		if (!mfd->start_histogram) {
 			ret = -ENODEV;
 			goto msm_fb_ioctl_exit;
 		}
@@ -4067,7 +4067,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 
 	case MSMFB_HISTOGRAM_STOP:
-		if (!mfd->do_histogram) {
+		if (!mfd->stop_histogram) {
 			ret = -ENODEV;
 			goto msm_fb_ioctl_exit;
 		}
