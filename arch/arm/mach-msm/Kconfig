@@ -2374,4 +2374,8 @@ config SONY_SSM
           This enables support for power mode notifications, required by Super
           Stamina Mode.
 
+config CPU_VOLTAGE_TABLE
+	bool "Enable CPU Voltage Table via sysfs for adjustements"	
+	default n
+
 endif
