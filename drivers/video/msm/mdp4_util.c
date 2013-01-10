@@ -392,6 +392,7 @@ void mdp4_hw_init(void)
 	int i;
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+	mdp_clk_ctrl(1);
 
 #ifdef MDP4_ERROR
 	/*
@@ -460,6 +461,7 @@ void mdp4_hw_init(void)
 
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
 }
 
 
