@@ -2262,6 +2262,10 @@ static int msm_fb_set_par(struct fb_info *info)
 		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
 	} else if (blank) {
 		msm_fb_blank_sub(FB_BLANK_POWERDOWN, info, mfd->op_enable);
+
+		if (mfd->update_panel_info)
+			mfd->update_panel_info(mfd);
+
 		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
 	}
 
