@@ -369,7 +369,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 
 	prtd->enabled = 1;
 	prtd->cmd_ack = 0;
-
+	prtd->cmd_interrupt = 0;
 	return 0;
 }
 
@@ -888,16 +888,52 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		}
 		return 0;
 	case SNDRV_PCM_IOCTL1_RESET:
-		prtd->cmd_ack = 0;
-		rc = q6asm_cmd(prtd->audio_client, CMD_FLUSH);
-		if (rc < 0)
-			pr_err("%s: flush cmd failed rc=%d\n", __func__, rc);
-		rc = wait_event_timeout(the_locks.eos_wait,
-			prtd->cmd_ack, 5 * HZ);
-		if (rc < 0)
-			pr_err("Flush cmd timeout\n");
-		prtd->pcm_irq_pos = 0;
+		pr_debug("SNDRV_PCM_IOCTL1_RESET\n");
+		/* Flush only when session is started during CAPTURE,
+		   while PLAYBACK has no such restriction. */
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK ||
+			  (substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
+						atomic_read(&prtd->start))) {
+			if (atomic_read(&prtd->eos)) {
+				prtd->cmd_interrupt = 1;
+				wake_up(&the_locks.eos_wait);
+				atomic_set(&prtd->eos, 0);
+			}
+
+			/* A unlikely race condition possible with FLUSH
+			   DRAIN if ack is set by flush and reset by drain */
+			prtd->cmd_ack = 0;
+			rc = q6asm_cmd(prtd->audio_client, CMD_FLUSH);
+			if (rc < 0) {
+				pr_err("%s: flush cmd failed rc=%d\n",
+					__func__, rc);
+				return rc;
+			}
+			rc = wait_event_timeout(the_locks.flush_wait,
+				prtd->cmd_ack, 5 * HZ);
+			if (rc < 0)
+				pr_err("Flush cmd timeout\n");
+			prtd->pcm_irq_pos = 0;
+		}
 		break;
+	case SNDRV_COMPRESS_DRAIN:
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN\n", __func__);
+		atomic_set(&prtd->eos, 1);
+		atomic_set(&prtd->pending_buffer, 0);
+		prtd->cmd_ack = 0;
+		q6asm_cmd_nowait(prtd->audio_client, CMD_EOS);
+		/* Wait indefinitely for  DRAIN. Flush can also signal this*/
+		rc = wait_event_interruptible(the_locks.eos_wait,
+			(prtd->cmd_ack || prtd->cmd_interrupt));
+		if (rc < 0)
+			pr_err("EOS cmd interrupted\n");
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN  out of wait\n", __func__);
+
+		if (prtd->cmd_interrupt)
+			rc = -EINTR;
+
+		prtd->cmd_interrupt = 0;
+		return rc;
 	default:
 		break;
 	}
