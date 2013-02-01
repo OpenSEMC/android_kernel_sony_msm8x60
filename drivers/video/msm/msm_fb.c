@@ -1732,10 +1732,11 @@ static int msm_fb_open(struct fb_info *info, int user)
 		if (mfd->is_panel_ready && !mfd->is_panel_ready())
 			unblank = false;
 
-		if (unblank && (mfd->panel_info.type != DTV_PANEL)) {
+		if (unblank) {
 			if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, TRUE)) {
-				pr_err("msm_fb_open: can't turn on display\n");
-				return -EINVAL;
+				MSM_FB_ERR("%s: can't turn on display!\n",
+					__func__);
+				return -EPERM;
 			}
 		}
 	}
