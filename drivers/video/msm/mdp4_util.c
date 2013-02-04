@@ -390,7 +390,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	struct mdp_hist_mgmt *mgmt = NULL;
 	char *base_addr;
 	int i, ret;
-	printk("PL:+mdp4_isr\n");
 
 	mdp_is_in_isr = TRUE;
 
@@ -586,7 +585,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 
 out:
 	mdp_is_in_isr = FALSE;
-	printk("PL:-mdp4_isr\n");
 
 	return IRQ_HANDLED;
 }

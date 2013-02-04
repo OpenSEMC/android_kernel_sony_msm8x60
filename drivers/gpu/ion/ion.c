@@ -1487,6 +1487,24 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 		break;
 	}
+	case ION_IOC_ALLOC34:
+	{
+		struct ion_allocation_data34 data;
+		printk("PL:ION_IOC_ALLOC34\n");
+
+		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
+			return -EFAULT;
+		data.handle = ion_alloc(client, data.len, data.align,
+					     data.flags);
+
+		if (IS_ERR_OR_NULL(data.handle))
+			return -ENOMEM;
+
+		if (copy_to_user((void __user *)arg, &data, sizeof(data)))
+			return -EFAULT;
+		break;
+	}
+
 	case ION_IOC_FREE:
 	{
 		struct ion_handle_data data;
@@ -1545,6 +1563,27 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return ret;
 		break;
 	}
+	case ION_IOC_IMPORT34:
+	{
+		struct ion_fd_data data;
+		int ret = 0;
+		printk("PL:ION_IOC_IMPORT34\n");
+		if (copy_from_user(&data, (void __user *)arg,
+				   sizeof(struct ion_fd_data)))
+			return -EFAULT;
+
+		data.handle = ion_import_fd(client, data.fd);
+		if (IS_ERR(data.handle)) {
+			ret = PTR_ERR(data.handle);
+			data.handle = NULL;
+		}
+		if (copy_to_user((void __user *)arg, &data,
+				 sizeof(struct ion_fd_data)))
+			return -EFAULT;
+		if (ret < 0)
+			return ret;
+		break;
+	}
 	case ION_IOC_CUSTOM:
 	{
 		struct ion_device *dev = client->dev;
@@ -1560,6 +1599,9 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case ION_IOC_CLEAN_CACHES:
 	case ION_IOC_INV_CACHES:
 	case ION_IOC_CLEAN_INV_CACHES:
+	case ION_IOC_CLEAN_CACHES34:
+	case ION_IOC_INV_CACHES34:
+        case ION_IOC_CLEAN_INV_CACHES34:
 	{
 		struct ion_flush_data data;
 		unsigned long start, end;
@@ -1602,6 +1644,7 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	}
 	case ION_IOC_GET_FLAGS:
+        case ION_IOC_GET_FLAGS34:
 	{
 		struct ion_flag_data data;
 		int ret;
