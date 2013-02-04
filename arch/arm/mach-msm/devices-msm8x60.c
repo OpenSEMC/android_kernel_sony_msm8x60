@@ -52,6 +52,7 @@
 #include <mach/mdm.h>
 #include <mach/rpm.h>
 #include <mach/board.h>
+#include <mach/kgsl.h>
 #include <sound/apr_audio.h>
 #include "rpm_stats.h"
 #include <mach/mpm.h>
