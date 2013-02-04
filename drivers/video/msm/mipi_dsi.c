@@ -69,8 +69,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	struct msm_panel_info *pinfo;
 
-	pr_debug("Start of %s....:\n", __func__);
-
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
@@ -131,10 +129,11 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
+	pr_debug("%s-:\n", __func__);
+
 	return ret;
 }
 
-extern struct mdp4_overlay_perf perf_current;
 static int mipi_dsi_on(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -259,7 +258,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	else
 		down(&mfd->dma->mutex);
 
-	ret = panel_next_on(pdev);
+	if (mfd->op_enable)
+		ret = panel_next_on(pdev);
 
 	mipi_dsi_op_mode_config(mipi->mode);
 
@@ -312,8 +312,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
-	perf_current.mdp_bw = OVERLAY_PERF_LEVEL4;
-	perf_current.mdp_clk_rate = 0;
 #endif
 
 	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
@@ -322,6 +320,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		mutex_unlock(&mfd->dma->ov_mutex);
 	else
 		up(&mfd->dma->mutex);
+
+	pr_debug("%s-:\n", __func__);
 
 	return ret;
 }
@@ -342,6 +342,8 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	uint32 h_period, v_period, dsi_pclk_rate;
 
 	resource_size_t size ;
+
+	printk("PL:mipi_dsi_probe\n");
 
 	if ((pdev->id == 1) && (pdev->num_resources >= 0)) {
 		mipi_dsi_pdata = pdev->dev.platform_data;
@@ -444,6 +446,9 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	if (pdev_list_cnt >= MSM_FB_MAX_DEV_LIST)
 		return -ENOMEM;
+
+	if (!mfd->cont_splash_done)
+		cont_splash_clk_ctrl(1);
 
 	mdp_dev = platform_device_alloc("mdp", pdev->id);
 	if (!mdp_dev)
@@ -560,8 +565,10 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	if (rc)
 		goto mipi_dsi_probe_err;
 
-	if ((dsi_pclk_rate < 3300000) || (dsi_pclk_rate > 103300000))
+	if ((dsi_pclk_rate < 3300000) || (dsi_pclk_rate > 223000000)) {
+		pr_err("%s: Pixel clock not supported\n", __func__);
 		dsi_pclk_rate = 35000000;
+	}
 	mipi->dsi_pclk_rate = dsi_pclk_rate;
 
 	/*
@@ -578,8 +585,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-    if (!mfd->cont_splash_done)
-		cont_splash_clk_ctrl(1);
+	printk("PL: mipi_dsi_probe() done without error\n");
 
 return 0;
 

@@ -20,6 +20,7 @@
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MAP_TABLE_SZ 64
 #define VCD_ENC_MAX_OUTBFRS_PER_FRAME 8
+#define MAX_DEC_TIME 33
 
 struct vcd_msm_map_buffer {
 	phys_addr_t phy_addr;
@@ -1252,7 +1253,7 @@ u32 vcd_validate_driver_handle(
 	driver_handle--;
 
 	if (driver_handle < 0 ||
-		driver_handle >= VCD_DRIVER_INSTANCE_MAX ||
+		driver_handle >= VCD_DRIVER_CLIENTS_MAX ||
 		!dev_ctxt->driver_ids[driver_handle]) {
 		return false;
 	} else {
@@ -1530,6 +1531,9 @@ u32 vcd_submit_frame(struct vcd_dev_ctxt *dev_ctxt,
 	struct vcd_buffer_entry *op_buf_entry = NULL;
 	u32 rc = VCD_S_SUCCESS;
 	u32 evcode = 0;
+	// PL: removed
+	// u32 perf_level = 0;
+	//	int decodeTime = 0;
 	struct ddl_frame_data_tag ddl_ip_frm;
 	struct ddl_frame_data_tag *ddl_op_frm;
 	u32 out_buf_cnt = 0;
@@ -1545,6 +1549,19 @@ u32 vcd_submit_frame(struct vcd_dev_ctxt *dev_ctxt,
 	ip_frm_entry->ip_frm_tag = (u32) transc;
 	memset(&ddl_ip_frm, 0, sizeof(ddl_ip_frm));
 	if (cctxt->decoding) {
+	  // PL: FIXME: removed, verify
+	  /*
+		decodeTime = ddl_get_core_decode_proc_time(cctxt->ddl_handle);
+		if (decodeTime > MAX_DEC_TIME) {
+			if (res_trk_get_curr_perf_level(&perf_level)) {
+				vcd_update_decoder_perf_level(dev_ctxt,
+				   res_trk_estimate_perf_level(perf_level));
+				ddl_reset_avg_dec_time(cctxt->ddl_handle);
+			} else
+				VCD_MSG_ERROR("%s(): retrieve curr_perf_level"
+						"returned FALSE\n", __func__);
+		}
+	  */
 		evcode = CLIENT_STATE_EVENT_NUMBER(decode_frame);
 		ddl_ip_frm.vcd_frm = *ip_frm_entry;
 		rc = ddl_decode_frame(cctxt->ddl_handle, &ddl_ip_frm,
@@ -2057,10 +2074,12 @@ u32 vcd_handle_input_done_in_eos(
 		transc->in_use = true;
 		if ((codec_config &&
 			 (status != VCD_ERR_BITSTREAM_ERR)) ||
-			((status == VCD_ERR_BITSTREAM_ERR) &&
+			(codec_config && (status == VCD_ERR_BITSTREAM_ERR) &&
 			 !(cctxt->status.mask & VCD_FIRST_IP_DONE) &&
-			 (core_type == VCD_CORE_720P)))
+			(core_type == VCD_CORE_720P))) {
+			VCD_MSG_HIGH("handle EOS for codec config");
 			vcd_handle_eos_done(cctxt, transc, VCD_S_SUCCESS);
+		}
 	}
 	return rc;
 }
@@ -2091,8 +2110,8 @@ u32 vcd_validate_io_done_pyld(
 		rc = VCD_ERR_CLIENT_FATAL;
 
 	if (VCD_FAILED(rc)) {
-		VCD_MSG_FATAL(
-			"vcd_validate_io_done_pyld: invalid transaction");
+		VCD_MSG_FATAL("vcd_validate_io_done_pyld: "\
+			"invalid transaction 0x%x", (u32)transc);
 	} else if (!frame->vcd_frm.virtual &&
 		status != VCD_ERR_INTRLCD_FIELD_DROP)
 		rc = VCD_ERR_BAD_POINTER;
@@ -3034,7 +3053,6 @@ u32 vcd_req_perf_level(
 {
 	u32 rc;
 	u32 res_trk_perf_level;
-	u32 turbo_perf_level;
 	if (!perf_level) {
 		VCD_MSG_ERROR("Invalid parameters\n");
 		return -EINVAL;
@@ -3044,13 +3062,10 @@ u32 vcd_req_perf_level(
 		rc = -ENOTSUPP;
 		goto perf_level_not_supp;
 	}
-	turbo_perf_level = get_res_trk_perf_level(VCD_PERF_LEVEL_TURBO);
 	rc = vcd_set_perf_level(cctxt->dev_ctxt, res_trk_perf_level);
 	if (!rc) {
 		cctxt->reqd_perf_lvl = res_trk_perf_level;
 		cctxt->perf_set_by_client = 1;
-		if (res_trk_perf_level == turbo_perf_level)
-			cctxt->is_turbo_enabled = true;
 	}
 perf_level_not_supp:
 	return rc;
@@ -3445,7 +3460,8 @@ u32 vcd_set_num_slices(struct vcd_clnt_ctxt *cctxt)
 	struct vcd_property_slice_delivery_info slice_delivery_info;
 	u32 rc = VCD_S_SUCCESS;
 	prop_hdr.prop_id = VCD_I_SLICE_DELIVERY_MODE;
-	prop_hdr.sz = sizeof(struct vcd_property_slice_delivery_info);
+	prop_hdr.sz =
+		sizeof(struct vcd_property_slice_delivery_info);
 	rc = ddl_get_property(cctxt->ddl_handle, &prop_hdr,
 				&slice_delivery_info);
 	VCD_FAILED_RETURN(rc, "Failed: Get VCD_I_SLICE_DELIVERY_MODE");

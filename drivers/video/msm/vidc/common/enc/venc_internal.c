@@ -893,23 +893,17 @@ u32 vid_enc_get_sequence_header(struct video_client_ctx *client_ctx,
 	u32 vcd_status = VCD_ERR_FAIL;
 	u32 status = true;
 
-	if (!client_ctx ||
-			!seq_header || !seq_header->bufsize)
+	if (!client_ctx || !seq_header || !seq_header->bufsize)
 		return false;
 
 	vcd_property_hdr.prop_id = VCD_I_SEQ_HEADER;
-	vcd_property_hdr.sz =
-		sizeof(struct vcd_sequence_hdr);
+	vcd_property_hdr.sz = sizeof(struct vcd_sequence_hdr);
 
-	hdr.sequence_header =
-		kzalloc(seq_header->bufsize, GFP_KERNEL);
-	seq_header->hdrbufptr = hdr.sequence_header;
-
-	if (!hdr.sequence_header)
-		return false;
+	hdr.sequence_header = seq_header->hdrbufptr;
 	hdr.sequence_header_len = seq_header->bufsize;
 	vcd_status = vcd_get_property(client_ctx->vcd_handle,
 			&vcd_property_hdr, &hdr);
+	seq_header->hdrlen = hdr.sequence_header_len;
 
 	if (vcd_status) {
 		ERR("%s(): Get VCD_I_SEQ_HEADER Failed\n",
@@ -1694,7 +1688,7 @@ u32 vid_enc_encode_frame(struct video_client_ctx *client_ctx,
 				&buff_handle);
 
 		if (vcd_input_buffer.data_len > 0) {
-			if (ion_flag == CACHED) {
+			if (ion_flag == CACHED && buff_handle) {
 				msm_ion_do_cache_op(
 				client_ctx->user_ion_client,
 				buff_handle,
@@ -1729,6 +1723,7 @@ u32 vid_enc_fill_output_buffer(struct video_client_ctx *client_ctx,
 	struct file *file;
 	s32 buffer_index = -1;
 	u32 vcd_status = VCD_ERR_FAIL;
+	struct ion_handle *buff_handle = NULL;
 
 	struct vcd_frame_data vcd_frame;
 
@@ -1744,9 +1739,13 @@ u32 vid_enc_fill_output_buffer(struct video_client_ctx *client_ctx,
 
 		memset((void *)&vcd_frame, 0,
 					 sizeof(struct vcd_frame_data));
+		vidc_get_fd_info(client_ctx, BUFFER_TYPE_OUTPUT,
+				pmem_fd, kernel_vaddr, buffer_index,
+				&buff_handle);
 		vcd_frame.virtual = (u8 *) kernel_vaddr;
 		vcd_frame.frm_clnt_data = (u32) output_frame_info->clientdata;
 		vcd_frame.alloc_len = output_frame_info->sz;
+		vcd_frame.buff_ion_handle = buff_handle;
 
 		vcd_status = vcd_fill_output_buffer(client_ctx->vcd_handle,
 								&vcd_frame);

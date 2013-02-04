@@ -259,9 +259,9 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 
 	if (wait) {
 		if (pipe->ov_blt_addr)
-			mdp4_lcdc_wait4ov(cndx);
+			mdp4_lcdc_wait4ov(0);
 		else
-			mdp4_lcdc_wait4dmap(cndx);
+			mdp4_lcdc_wait4dmap(0);
 	}
 
 	return cnt;
@@ -379,7 +379,7 @@ static ssize_t vsync_show_event(struct device *dev,
 		INIT_COMPLETION(vctrl->vsync_comp);
 	vctrl->wait_vsync_cnt++;
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
-	wait_for_completion_timeout(&vctrl->vsync_comp, msecs_to_jiffies(1000));
+	wait_for_completion(&vctrl->vsync_comp);
 
 	ret = snprintf(buf, PAGE_SIZE, "VSYNC=%llu",
 			ktime_to_ns(vctrl->vsync_time));
@@ -525,6 +525,7 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 		pipe = vctrl->base_pipe;
 	}
 
+
 	pipe->src_height = fbi->var.yres;
 	pipe->src_width = fbi->var.xres;
 	pipe->src_h = fbi->var.yres;
@@ -573,7 +574,12 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	lcdc_bpp = mfd->panel_info.bpp;
 
 	hsync_period =
-	    hsync_pulse_width + h_back_porch + lcdc_width + h_front_porch;
+	    hsync_pulse_width + h_back_porch + h_front_porch;
+	if ((mfd->panel_info.type == LVDS_PANEL) &&
+		(mfd->panel_info.lvds.channel_mode == LVDS_DUAL_CHANNEL_MODE))
+		hsync_period += lcdc_width / 2;
+	else
+		hsync_period += lcdc_width;
 	hsync_ctrl = (hsync_period << 16) | hsync_pulse_width;
 	hsync_start_x = hsync_pulse_width + h_back_porch;
 	hsync_end_x = hsync_period - h_front_porch - 1;
@@ -608,8 +614,13 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 
 
 #ifdef CONFIG_FB_MSM_MDP40
-	hsync_polarity = 1;
-	vsync_polarity = 1;
+	if (mfd->panel_info.lcdc.is_sync_active_high) {
+		hsync_polarity = 0;
+		vsync_polarity = 0;
+	} else {
+		hsync_polarity = 1;
+		vsync_polarity = 1;
+	}
 	lcdc_underflow_clr |= 0x80000000;	/* enable recovery */
 #else
 	hsync_polarity = 0;
@@ -691,11 +702,6 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	lcdc_enabled = 0;
 
 	mdp_histogram_ctrl_all(FALSE);
-
-	if (vctrl->vsync_irq_enabled) {
-		vctrl->vsync_irq_enabled = 0;
-		vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
-	}
 
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
@@ -792,6 +798,7 @@ void mdp4_primary_vsync_lcdc(void)
 
 	cndx = 0;
 	vctrl = &vsync_ctrl_db[cndx];
+	pr_debug("%s: cpu=%d\n", __func__, smp_processor_id());
 	vctrl->vsync_time = ktime_get();
 
 	spin_lock(&vctrl->spin_lock);
@@ -817,8 +824,6 @@ void mdp4_dmap_done_lcdc(int cndx)
 	}
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
-	if (pipe == NULL)
-		return;
 
 	spin_lock(&vctrl->spin_lock);
 	vsync_irq_disable(INTR_DMA_P_DONE, MDP_DMAP_TERM);
@@ -839,10 +844,6 @@ void mdp4_dmap_done_lcdc(int cndx)
 	}
 
 	complete_all(&vctrl->dmap_comp);
-
-	if (mdp_rev <= MDP_REV_41)
-		mdp4_mixer_blend_cfg(MDP4_MIXER0);
-
 	mdp4_overlay_dma_commit(cndx);
 	spin_unlock(&vctrl->spin_lock);
 }
@@ -857,8 +858,6 @@ void mdp4_overlay0_done_lcdc(int cndx)
 
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
-	if (pipe == NULL)
-		return;
 
 	spin_lock(&vctrl->spin_lock);
 	vsync_irq_disable(INTR_OVERLAY0_DONE, MDP_OVERLAY0_TERM);
@@ -942,19 +941,16 @@ void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 	uint8 *buf;
 	unsigned int buf_offset;
 	int bpp;
-	int cnt, cndx = 0;
+	int cndx = 0;
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
 
-	if (!pipe || !mfd->panel_power_on) {
-		mutex_unlock(&mfd->dma->ov_mutex);
+	if (!pipe || !mfd->panel_power_on)
 		return;
-	}
 
 	pr_debug("%s: cpu=%d pid=%d\n", __func__,
 			smp_processor_id(), current->pid);
@@ -970,19 +966,17 @@ void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 
 		mdp4_lcdc_pipe_queue(0, pipe);
 	}
-	mdp_update_pm(mfd, vsync_ctrl_db[0].vsync_time);
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
-	cnt = mdp4_lcdc_pipe_commit(cndx, 0);
-	if (cnt) {
-		if (pipe->ov_blt_addr)
-			mdp4_lcdc_wait4ov(cndx);
-		else
-			mdp4_lcdc_wait4dmap(cndx);
-	}
+	mutex_lock(&mfd->dma->ov_mutex);
+	mdp4_lcdc_pipe_commit(0, 0);
+	mutex_unlock(&mfd->dma->ov_mutex);
+
+	if (pipe->ov_blt_addr)
+		mdp4_lcdc_wait4ov(0);
+	else
+		mdp4_lcdc_wait4dmap(0);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
-	mutex_unlock(&mfd->dma->ov_mutex);
 }

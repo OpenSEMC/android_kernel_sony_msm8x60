@@ -51,6 +51,7 @@ unsigned is_mdp4_hw_reset(void)
 
 void mdp4_sw_reset(ulong bits)
 {
+        printk("PL:mdp4_sw_reset()\n");
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
@@ -246,19 +247,21 @@ void mdp4_hw_init(void)
 	ulong bits;
 	uint32 clk_rate;
 
+	printk("PL:mdp4_hw_init()\n");
+
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	mdp_bus_scale_update_request(5);
 
-#ifdef MDP4_ERROR
+	#ifdef MDP4_ERROR
 	/*
 	 * Issue software reset on DMA_P will casue DMA_P dma engine stall
 	 * on LCDC mode. However DMA_P does not stall at MDDI mode.
 	 * This need further investigation.
 	 */
-	mdp4_sw_reset(0x17);
-#endif
+       	mdp4_sw_reset(0x17);
+	#endif
 
 	if (mdp_rev > MDP_REV_41) {
 		/* mdp chip select controller */
@@ -266,13 +269,18 @@ void mdp4_hw_init(void)
 		outpdw(MDP_BASE + 0x00c4, CS_CONTROLLER_1);
 	}
 
+	printk("PL:mdp4_hw_init, call mdp4_clear_lcdc()\n");
+
 	mdp4_clear_lcdc();
 
+	printk("PL:mdp4_hw_init, init mixers\n");
 	mdp4_mixer_blend_init(0);
 	mdp4_mixer_blend_init(1);
+	printk("PL:mdp4_hw_init, init qseed\n");
 	mdp4_vg_qseed_init(0);
 	mdp4_vg_qseed_init(1);
 
+	printk("PL:mdp4_hw_init, init csc\n");
 	mdp4_vg_csc_setup(0);
 	mdp4_vg_csc_setup(1);
 	mdp4_mixer_csc_setup(1);
@@ -280,9 +288,12 @@ void mdp4_hw_init(void)
 	mdp4_dmap_csc_setup();
 
 	if (mdp_rev <= MDP_REV_41) {
+	  printk("PL:mdp4_hw_init, mdp4_mixer_gc_lut_setup\n");
 		mdp4_mixer_gc_lut_setup(0);
 		mdp4_mixer_gc_lut_setup(1);
 	}
+
+	printk("PL:mdp4_hw_init, lut setups\n");
 
 	mdp4_vg_igc_lut_setup(0);
 	mdp4_vg_igc_lut_setup(1);
@@ -290,9 +301,13 @@ void mdp4_hw_init(void)
 	mdp4_rgb_igc_lut_setup(0);
 	mdp4_rgb_igc_lut_setup(1);
 
+	printk("PL:mdp4_hw_init, MDP_EBI2_PORTMAP_MODE");
+
 	outp32(MDP_EBI2_PORTMAP_MODE, 0x3);
 
 	/* system interrupts */
+
+	printk("PL: init intr\n");
 
 	bits =  mdp_intr_mask;
 	outpdw(MDP_BASE + 0x0050, bits);/* enable specififed interrupts */
@@ -314,6 +329,8 @@ void mdp4_hw_init(void)
 	clk_rate = mdp_get_core_clk();
 	mdp4_fetch_cfg(clk_rate);
 
+	printk("PL: init overlay\n");
+
 	mdp4_overlay_cfg_init();
 
 	/* Mark hardware as initialized. Only revisions > v2.1 have a register
@@ -321,22 +338,30 @@ void mdp4_hw_init(void)
 	if (mdp_hw_revision > MDP4_REVISION_V2_1)
 		outpdw(MDP_BASE + 0x003c, 1);
 
+	printk("PL: mdp_pipe_ctrl, power on\n");
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	printk("PL:mdp4_hw_init() done\n");
 }
 
 
 void mdp4_clear_lcdc(void)
 {
-	uint32 bits;
+  	uint32 bits;
 
+	printk("PL:mdp4_clear_lcdc()\n");
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
+	printk("PL:mdp4_clear_lcdc, check if enabled\n");
+	// PL: fixme!!!! stuck here, temporary comment
 	bits = inpdw(MDP_BASE + 0xc0000);
 	if (bits & 0x01) { /* enabled already */
+	  printk("PL:mdp4_clear_lcdc, is enabled, disable\n");
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 		return;
 	}
+
+	printk("PL:mdp4_clear_lcdc, clearing all\n");
 
 	outpdw(MDP_BASE + 0xc0004, 0);	/* vsync ctrl out */
 	outpdw(MDP_BASE + 0xc0008, 0);	/* vsync period */
@@ -353,7 +378,9 @@ void mdp4_clear_lcdc(void)
 	outpdw(MDP_BASE + 0xc0034, 0);	/* lcdc test ctl */
 	outpdw(MDP_BASE + 0xc0038, 0);	/* lcdc ctl polarity */
 
+	printk("PL:mdp4_clear_lcdc, power_off\n");
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	printk("PL:mdp4_clear_lcdc, done!\n");
 }
 
 irqreturn_t mdp4_isr(int irq, void *ptr)
@@ -361,7 +388,9 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	uint32 isr, mask, panel;
 	struct mdp_dma_data *dma;
 	struct mdp_hist_mgmt *mgmt = NULL;
+	char *base_addr;
 	int i, ret;
+	printk("PL:+mdp4_isr\n");
 
 	mdp_is_in_isr = TRUE;
 
@@ -388,7 +417,12 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 			mgmt = mdp_hist_mgmt_array[i];
 			if (!mgmt)
 				continue;
+			base_addr = MDP_BASE + mgmt->base;
+			MDP_OUTP(base_addr + 0x010, 1);
+			outpdw(base_addr + 0x01c, INTR_HIST_DONE |
+						INTR_HIST_RESET_SEQ_DONE);
 			mgmt->mdp_is_hist_valid = FALSE;
+			__mdp_histogram_reset(mgmt);
 		}
 	}
 
@@ -552,6 +586,7 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 
 out:
 	mdp_is_in_isr = FALSE;
+	printk("PL:-mdp4_isr\n");
 
 	return IRQ_HANDLED;
 }
@@ -2551,9 +2586,9 @@ u32 mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 			if (mdp_iommu_split_domain) {
 				if (ion_map_iommu(mfd->iclient, buf->ihdl,
 					DISPLAY_READ_DOMAIN, GEN_POOL, SZ_4K,
-					buffer_size * 2, &read_addr, &len,
+					buffer_size * 2, &read_addr, &len, 
 					0, 0)) {
-					pr_err("ion_map_iommu() read failed\n");
+				        pr_err("ion_map_iommu() read failed\n");
 					return -ENOMEM;
 				}
 				if (mfd->mem_hid & ION_SECURE) {
@@ -2566,10 +2601,9 @@ u32 mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 				} else {
 					if (ion_map_iommu(mfd->iclient,
 						buf->ihdl, DISPLAY_WRITE_DOMAIN,
-						GEN_POOL, SZ_4K,
-						buffer_size * 2, &addr, &len,
+						GEN_POOL, SZ_4K, buffer_size * 2, &addr, &len,
 						0, 0)) {
-						pr_err("split ion_map_iommu() failed\n");
+						pr_err("ion_map_iommu() failed\n");
 						return -ENOMEM;
 					}
 				}
@@ -3234,56 +3268,60 @@ static uint32_t mdp4_pp_block2qseed(uint32_t block)
 	return valid;
 }
 
-static int mdp4_qseed_access_cfg(struct mdp_qseed_cfg_data *cfg)
+int mdp4_qseed_access_cfg(struct mdp_qseed_cfg *config, uint32_t base)
 {
 	int i, ret = 0;
-	uint32_t base = (uint32_t) (MDP_BASE + mdp_block2base(cfg->block));
 	uint32_t *values;
 
-	if ((cfg->table_num != 1) && (cfg->table_num != 2)) {
+	if ((config->table_num != 1) && (config->table_num != 2)) {
 		ret = -ENOTTY;
 		goto error;
 	}
 
-	if (((cfg->table_num == 1) && (cfg->len != QSEED_TABLE_1_COUNT)) ||
-		((cfg->table_num == 2) && (cfg->len != QSEED_TABLE_2_COUNT))) {
+	if (((config->table_num == 1) && (config->len != QSEED_TABLE_1_COUNT))
+			|| ((config->table_num == 2) &&
+				(config->len != QSEED_TABLE_2_COUNT))) {
 		ret = -EINVAL;
 		goto error;
 	}
 
-	values = kmalloc(cfg->len * sizeof(uint32_t), GFP_KERNEL);
+	values = kmalloc(config->len * sizeof(uint32_t), GFP_KERNEL);
 	if (!values) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	base += (cfg->table_num == 1) ? MDP4_QSEED_TABLE1_OFF :
+	base += (config->table_num == 1) ? MDP4_QSEED_TABLE1_OFF :
 							MDP4_QSEED_TABLE2_OFF;
 
-	if (cfg->ops & MDP_PP_OPS_WRITE) {
-		ret = copy_from_user(values, cfg->data,
-						sizeof(uint32_t) * cfg->len);
+	if (config->ops & MDP_PP_OPS_WRITE) {
+		ret = copy_from_user(values, config->data,
+						sizeof(uint32_t) * config->len);
 		if (ret) {
 			pr_warn("%s: Error copying from user, %d", __func__,
 									ret);
 			ret = -EINVAL;
 			goto err_mem;
 		}
-		for (i = 0; i < cfg->len; i++) {
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		for (i = 0; i < config->len; i++) {
 			if (!(base & 0x3FF))
 				wmb();
 			MDP_OUTP(base , values[i]);
 			base += sizeof(uint32_t);
 		}
-	} else if (cfg->ops & MDP_PP_OPS_READ) {
-		for (i = 0; i < cfg->len; i++) {
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	} else if (config->ops & MDP_PP_OPS_READ) {
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		for (i = 0; i < config->len; i++) {
 			values[i] = inpdw(base);
 			if (!(base & 0x3FF))
 				rmb();
 			base += sizeof(uint32_t);
 		}
-		ret = copy_to_user(cfg->data, values,
-						sizeof(uint32_t) * cfg->len);
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+		ret = copy_to_user(config->data, values,
+						sizeof(uint32_t) * config->len);
 		if (ret) {
 			pr_warn("%s: Error copying to user, %d", __func__, ret);
 			ret = -EINVAL;
@@ -3297,11 +3335,13 @@ error:
 	return ret;
 }
 
-int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *cfg)
+int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *config)
 {
 	int ret = 0;
+	struct mdp_qseed_cfg *cfg = &config->qseed_data;
+	uint32_t base;
 
-	if (!mdp4_pp_block2qseed(cfg->block)) {
+	if (!mdp4_pp_block2qseed(config->block)) {
 		ret = -ENOTTY;
 		goto error;
 	}
@@ -3312,22 +3352,9 @@ int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *cfg)
 								__func__);
 		goto error;
 	}
-
-	ret = mdp4_qseed_access_cfg(cfg);
+	base = (uint32_t) (MDP_BASE + mdp_block2base(config->block));
+	ret = mdp4_qseed_access_cfg(cfg, base);
 
 error:
 	return ret;
-}
-u32 mdp4_get_mixer_num(u32 panel_type)
-{
-	u32 mixer_num;
-	if ((panel_type == TV_PANEL) ||
-			(panel_type == DTV_PANEL))
-		mixer_num = MDP4_MIXER1;
-	else if (panel_type == WRITEBACK_PANEL) {
-		mixer_num = MDP4_MIXER2;
-	} else {
-		mixer_num = MDP4_MIXER0;
-	}
-	return mixer_num;
 }

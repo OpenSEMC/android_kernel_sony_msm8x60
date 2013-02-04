@@ -388,10 +388,13 @@ u32 vidc_get_fd_info(struct video_client_ctx *client_ctx,
 	else
 		buf_addr_table = client_ctx->output_buf_addr_table;
 	if (buf_addr_table[index].pmem_fd == pmem_fd) {
-		if (buf_addr_table[index].kernel_vaddr == kvaddr)
+		if (buf_addr_table[index].kernel_vaddr == kvaddr) {
 			rc = buf_addr_table[index].buff_ion_flag;
 			*buff_handle = buf_addr_table[index].buff_ion_handle;
-	}
+		} else
+			*buff_handle = NULL;
+	} else
+		*buff_handle = NULL;
 	return rc;
 }
 EXPORT_SYMBOL(vidc_get_fd_info);

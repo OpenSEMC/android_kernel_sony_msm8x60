@@ -1,5 +1,4 @@
 /* Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,23 +33,18 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/hrtimer.h>
-#include <linux/wakelock.h>
 
 #include <linux/fb.h>
 #include <linux/list.h>
 #include <linux/types.h>
+
 #include <linux/msm_mdp.h>
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
 
-/*  Idle wakelock to prevent PC between wake up and Vsync */
-extern struct wake_lock mdp_idle_wakelock;
-
 #include "msm_fb_panel.h"
 #include "mdp.h"
-
-#define HDMI_VIDEO_QUANTIZATION_ISSUE
 
 #define MSM_FB_DEFAULT_PAGE_SIZE 2
 #define MFD_KEY  0x11161126
@@ -139,6 +133,8 @@ struct msm_fb_data_type {
 			      struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
 			      struct mdp_histogram_data *hist);
+	int (*start_histogram) (struct mdp_histogram_start_req *req);
+	int (*stop_histogram) (struct fb_info *info, uint32_t block);
 	void (*vsync_ctrl) (int enable);
 	void *cursor_buf;
 	void *cursor_buf_phys;
@@ -150,7 +146,7 @@ struct msm_fb_data_type {
 	__u32 bl_level;
 
 	struct platform_device *pdev;
-	struct platform_device *panel_pdev;
+        struct platform_device *panel_pdev;
 
 	__u32 var_xres;
 	__u32 var_yres;
@@ -192,7 +188,27 @@ struct msm_fb_data_type {
 	u32 writeback_state;
 	bool writeback_active_cnt;
 	int cont_splash_done;
-	void *cpu_pm_hdl;
+	u32 acq_fen_cnt;
+	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
+	int cur_rel_fen_fd;
+	struct sync_pt *cur_rel_sync_pt;
+	struct sync_fence *cur_rel_fence;
+	struct sync_fence *last_rel_fence;
+	struct sw_sync_timeline *timeline;
+	int timeline_value;
+	u32 last_acq_fen_cnt;
+	struct sync_fence *last_acq_fen[MDP_MAX_FENCE_FD];
+	struct mutex sync_mutex;
+	struct completion commit_comp;
+	u32 is_committing;
+	struct work_struct commit_work;
+	void *msm_fb_backup;
+	boolean panel_driver_on;
+};
+struct msm_fb_backup_type {
+	struct fb_info info;
+	struct fb_var_screeninfo var;
+	struct msm_fb_data_type mfd;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
@@ -212,7 +228,8 @@ int msm_fb_writeback_stop(struct fb_info *info);
 int msm_fb_writeback_terminate(struct fb_info *info);
 int msm_fb_detect_client(const char *name);
 int calc_fb_offset(struct msm_fb_data_type *mfd, struct fb_info *fbi, int bpp);
-
+int msm_fb_wait_for_fence(struct msm_fb_data_type *mfd);
+int msm_fb_signal_timeline(struct msm_fb_data_type *mfd);
 #ifdef CONFIG_FB_BACKLIGHT
 void msm_fb_config_backlight(struct msm_fb_data_type *mfd);
 #endif
@@ -226,8 +243,5 @@ int msm_fb_check_frame_rate(struct msm_fb_data_type *mfd,
 #define INIT_IMAGE_FILE "/initlogo.rle"
 int load_565rle_image(char *filename, bool bf_supported);
 #endif
-
-int msm_fb_check_frame_rate(struct msm_fb_data_type *mfd,
-				struct fb_info *info);
 
 #endif /* MSM_FB_H */

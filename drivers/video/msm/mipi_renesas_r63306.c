@@ -20,18 +20,28 @@ static int mipi_r63306_disp_on(struct msm_fb_data_type *mfd)
 	struct mipi_dsi_data *dsi_data;
 	struct dsi_controller *pctrl;
 
+	printk("PL:mipi_r63306_disp_on()\n");
+
 	dsi_data = platform_get_drvdata(mfd->panel_pdev);
 	if (!dsi_data || !dsi_data->lcd_power) {
+	  if(!dsi_data) {
+	    printk("PL:dsi_data is null\n");
+	  } else if (!dsi_data->lcd_power) {
+	    printk("PL:dsi_data=0x%X ,dsi_data->lcd_power is null\n",(unsigned int)dsi_data);
+	  }
 		ret = -ENODEV;
 		goto disp_on_fail;
 	}
 	pctrl = dsi_data->panel->pctrl;
 
 	if (!dsi_data->panel_detecting) {
+	        printk("PL:mipi_r63306_disp_on, calling lcd_power\n");
 		ret = dsi_data->lcd_power(TRUE);
 
-		if (ret)
+		if (ret) {
+		  printk("PL:mipi_r63306_disp_on, lcd_power failed\n");
 			goto disp_on_fail;
+		}
 
 		mipi_dsi_op_mode_config(DSI_CMD_MODE);
 
@@ -54,9 +64,11 @@ static int mipi_r63306_disp_on(struct msm_fb_data_type *mfd)
 				pctrl->display_on_cmds_size);
 			dev_info(&mfd->panel_pdev->dev, "ECO MODE OFF\n");
 		}
+	} else {
+	  printk("PL:mipi_r63306_disp_on, failed because of panel_detecting\n");
 	}
-
 disp_on_fail:
+	printk("PL:mipi_r63306_disp_on, ret = %d\n", ret);
 	return ret;
 }
 
@@ -135,8 +147,8 @@ static int __devexit mipi_r63306_lcd_remove(struct platform_device *pdev)
 #endif
 
 	platform_set_drvdata(pdev, NULL);
-	mipi_dsi_buf_release(&dsi_data->tx_buf);
-	mipi_dsi_buf_release(&dsi_data->rx_buf);
+	//	mipi_dsi_buf_release(&dsi_data->tx_buf);
+	//	mipi_dsi_buf_release(&dsi_data->rx_buf);
 	kfree(dsi_data);
 	return 0;
 }
@@ -150,9 +162,13 @@ static int __devinit mipi_r63306_lcd_probe(struct platform_device *pdev)
 	struct platform_device *fb_pdev;
 #endif
 
+	printk("PL:mipi_r63306_lcd_probe\n");
+
 	platform_data = pdev->dev.platform_data;
-	if (platform_data == NULL)
+	if (platform_data == NULL) {
+	  printk("PL:mipi_r63306_lcd_probe, platform_data is null!\n");
 		return -EINVAL;
+	}
 
 	dsi_data = kzalloc(sizeof(struct mipi_dsi_data), GFP_KERNEL);
 	if (dsi_data == NULL)
@@ -165,6 +181,11 @@ static int __devinit mipi_r63306_lcd_probe(struct platform_device *pdev)
 	dsi_data->lcd_power = platform_data->lcd_power;
 	dsi_data->lcd_reset = platform_data->lcd_reset;
 	dsi_data->eco_mode_switch = mipi_dsi_eco_mode_switch;
+
+	printk("PL:mipi_r63306_lcd_probe, dsi_data=0x%X dsi_data->lcd_power=%X\n", 
+	       (unsigned)dsi_data, 
+	       (unsigned)platform_data->lcd_power);
+	// PL: FIXME: verify if we need panel detection.
 	if (mipi_dsi_need_detect_panel(dsi_data->panels)) {
 		dsi_data->panel_data.panel_detect = mipi_dsi_detect_panel;
 		dsi_data->panel_data.update_panel = mipi_dsi_update_panel;
@@ -172,6 +193,7 @@ static int __devinit mipi_r63306_lcd_probe(struct platform_device *pdev)
 	} else {
 		dev_info(&pdev->dev, "no need to detect panel\n");
 	}
+	
 
 	ret = mipi_dsi_buf_alloc(&dsi_data->tx_buf, DSI_BUF_SIZE);
 	if (ret <= 0) {
@@ -206,12 +228,12 @@ static int __devinit mipi_r63306_lcd_probe(struct platform_device *pdev)
 #ifdef CONFIG_DEBUG_FS
 	mipi_dsi_debugfs_init(pdev, "mipi_r63306");
 #endif
-
+	printk("PL:mipi_r63306_lcd_probe, done!\n");
 	return 0;
 error3:
-	mipi_dsi_buf_release(&dsi_data->rx_buf);
+	//	mipi_dsi_buf_release(&dsi_data->rx_buf);
 error2:
-	mipi_dsi_buf_release(&dsi_data->tx_buf);
+	//	mipi_dsi_buf_release(&dsi_data->tx_buf);
 error1:
 	kfree(dsi_data);
 	return ret;

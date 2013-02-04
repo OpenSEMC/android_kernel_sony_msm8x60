@@ -531,8 +531,11 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 		else
 			enc_perf_level += cctxt_itr->reqd_perf_lvl;
 
+		//FIXME: PL: check what we do here, disable for now
+		/*
 		if (cctxt_itr->is_turbo_enabled)
 			turbo_enabled = true;
+		*/
 		cctxt_itr = cctxt_itr->next;
 	}
 
