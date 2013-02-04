@@ -12,6 +12,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/sched.h>
 #include <mach/socinfo.h>
 
 #include "kgsl.h"
@@ -2289,9 +2290,6 @@ static int a3xx_create_gmem_shadow(struct adreno_device *adreno_dev,
 	build_quad_vtxbuff(drawctxt, &drawctxt->context_gmem_shadow,
 		&tmp_ctx.cmd);
 
-	/* Dow we need to idle? */
-	/* adreno_idle(&adreno_dev->dev, KGSL_TIMEOUT_DEFAULT); */
-
 	tmp_ctx.cmd = build_gmem2sys_cmds(adreno_dev, drawctxt,
 		&drawctxt->context_gmem_shadow);
 	tmp_ctx.cmd = build_sys2gmem_cmds(adreno_dev, drawctxt,
@@ -2556,30 +2554,29 @@ static void a3xx_err_callback(struct adreno_device *adreno_dev, int bit)
 
 static void a3xx_cp_callback(struct adreno_device *adreno_dev, int irq)
 {
-	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
+	struct kgsl_device *device = &adreno_dev->dev;
 
 	if (irq == A3XX_INT_CP_RB_INT) {
 		unsigned int context_id;
-		kgsl_sharedmem_readl(&adreno_dev->dev.memstore,
-				&context_id,
+		kgsl_sharedmem_readl(&device->memstore, &context_id,
 				KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL,
 					current_context));
 		if (context_id < KGSL_MEMSTORE_MAX) {
-			kgsl_sharedmem_writel(&rb->device->memstore,
+			kgsl_sharedmem_writel(&device->memstore,
 					KGSL_MEMSTORE_OFFSET(context_id,
 						ts_cmp_enable), 0);
 			wmb();
 		}
-		KGSL_CMD_WARN(rb->device, "ringbuffer rb interrupt\n");
+		KGSL_CMD_WARN(device, "ringbuffer rb interrupt\n");
 	}
 
-	wake_up_interruptible_all(&rb->device->wait_queue);
+	wake_up_interruptible_all(&device->wait_queue);
 
 	/* Schedule work to free mem and issue ibs */
-	queue_work(rb->device->work_queue, &rb->device->ts_expired_ws);
+	queue_work(device->work_queue, &device->ts_expired_ws);
 
-	atomic_notifier_call_chain(&rb->device->ts_notifier_list,
-				   rb->device->id, NULL);
+	atomic_notifier_call_chain(&device->ts_notifier_list,
+				   device->id, NULL);
 }
 
 #define A3XX_IRQ_CALLBACK(_c) { .func = _c }
@@ -2701,24 +2698,46 @@ static void a3xx_start(struct adreno_device *adreno_dev)
 	struct kgsl_device *device = &adreno_dev->dev;
 
 	/* Set up 16 deep read/write request queues */
+	if (adreno_dev->gpurev == ADRENO_REV_A330) {
+		adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF0, 0x18181818);
+		adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF1, 0x00001818);
+		adreno_regwrite(device, A3XX_VBIF_OUT_RD_LIM_CONF0, 0x00001818);
+		adreno_regwrite(device, A3XX_VBIF_OUT_WR_LIM_CONF0, 0x00001818);
+		adreno_regwrite(device, A3XX_VBIF_DDR_OUT_MAX_BURST, 0x0000303);
+		adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF0, 0x18181818);
+		adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF1, 0x00001818);
+		/* Enable WR-REQ */
+		adreno_regwrite(device, A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x0000FF);
 
-	adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF1, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_OUT_RD_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_OUT_WR_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_DDR_OUT_MAX_BURST, 0x00000303);
-	adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF1, 0x10101010);
+		/* Set up round robin arbitration between both AXI ports */
+		adreno_regwrite(device, A3XX_VBIF_ARB_CTL, 0x00000030);
+		/* Set up VBIF_ROUND_ROBIN_QOS_ARB */
+		adreno_regwrite(device, A3XX_VBIF_ROUND_ROBIN_QOS_ARB, 0x0001);
 
-	/* Enable WR-REQ */
-	adreno_regwrite(device, A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x000000FF);
+		/* Set up AOOO */
+		adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO_EN, 0x00000FFF);
+		adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO, 0x0FFF0FFF);
 
-	/* Set up round robin arbitration between both AXI ports */
-	adreno_regwrite(device, A3XX_VBIF_ARB_CTL, 0x00000030);
+		/* VBIF AXI AMEMTYPE CONFIG */
+		adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AMEMTYPE_CONF0,
+			0x22222222);
+	} else {
+		adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010);
+		adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF1, 0x10101010);
+		adreno_regwrite(device, A3XX_VBIF_OUT_RD_LIM_CONF0, 0x10101010);
+		adreno_regwrite(device, A3XX_VBIF_OUT_WR_LIM_CONF0, 0x10101010);
+		adreno_regwrite(device, A3XX_VBIF_DDR_OUT_MAX_BURST, 0x0000303);
+		adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF0, 0x10101010);
+		adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF1, 0x10101010);
+		/* Enable WR-REQ */
+		adreno_regwrite(device, A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x0000FF);
 
-	/* Set up AOOO */
-	adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO_EN, 0x0000003C);
-	adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO, 0x003C003C);
+		/* Set up round robin arbitration between both AXI ports */
+		adreno_regwrite(device, A3XX_VBIF_ARB_CTL, 0x00000030);
+		/* Set up AOOO */
+		adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO_EN, 0x0000003C);
+		adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO, 0x003C003C);
+	}
 
 	if (cpu_is_apq8064()) {
 		/* Enable 1K sort */

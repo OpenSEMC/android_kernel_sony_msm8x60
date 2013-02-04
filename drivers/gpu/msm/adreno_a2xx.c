@@ -12,6 +12,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/sched.h>
 #include <mach/socinfo.h>
 
 #include "kgsl.h"
@@ -1449,8 +1450,8 @@ done:
 	return ret;
 }
 
-static void a2xx_drawctxt_workaround(struct adreno_device *adreno_dev,
-						struct adreno_context *context)
+static void a2xx_drawctxt_draw_workaround(struct adreno_device *adreno_dev,
+					struct adreno_context *context)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 	unsigned int cmd[11];
@@ -1498,7 +1499,7 @@ static void a2xx_drawctxt_workaround(struct adreno_device *adreno_dev,
 	}
 
 	adreno_ringbuffer_issuecmds(device, context, KGSL_CMD_FLAGS_PMODE,
-				    &cmd[0], cmds - cmd);
+			&cmd[0], cmds - cmd);
 }
 
 static void a2xx_drawctxt_save(struct adreno_device *adreno_dev,
@@ -1557,7 +1558,7 @@ static void a2xx_drawctxt_save(struct adreno_device *adreno_dev,
 
 		context->flags |= CTXT_FLAGS_GMEM_RESTORE;
 	} else if (adreno_is_a2xx(adreno_dev))
-		a2xx_drawctxt_workaround(adreno_dev, context);
+		a2xx_drawctxt_draw_workaround(adreno_dev, context);
 }
 
 static void a2xx_drawctxt_restore(struct adreno_device *adreno_dev,
@@ -1718,7 +1719,6 @@ static void a2xx_cp_intrcallback(struct kgsl_device *device)
 			kgsl_sharedmem_writel(&rb->device->memstore,
 					KGSL_MEMSTORE_OFFSET(context_id,
 						ts_cmp_enable), 0);
-			device->last_expired_ctxt_id = context_id;
 			wmb();
 		}
 		KGSL_CMD_WARN(rb->device, "ringbuffer rb interrupt\n");
@@ -2026,7 +2026,7 @@ struct adreno_gpudev adreno_a2xx_gpudev = {
 	.ctxt_create = a2xx_drawctxt_create,
 	.ctxt_save = a2xx_drawctxt_save,
 	.ctxt_restore = a2xx_drawctxt_restore,
-	.ctxt_draw_workaround = a2xx_drawctxt_workaround,
+	.ctxt_draw_workaround = a2xx_drawctxt_draw_workaround,
 	.irq_handler = a2xx_irq_handler,
 	.irq_control = a2xx_irq_control,
 	.snapshot = a2xx_snapshot,

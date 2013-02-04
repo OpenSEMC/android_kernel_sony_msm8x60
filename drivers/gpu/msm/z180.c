@@ -10,7 +10,9 @@
  * GNU General Public License for more details.
  *
  */
+#include <linux/module.h>
 #include <linux/uaccess.h>
+#include <linux/sched.h>
 
 #include "kgsl.h"
 #include "kgsl_cffdump.h"
@@ -22,9 +24,6 @@
 
 #define DRIVER_VERSION_MAJOR   3
 #define DRIVER_VERSION_MINOR   1
-
-#define Z180_DEVICE(device) \
-		KGSL_CONTAINER_OF(device, struct z180_device, dev)
 
 #define GSL_VGC_INT_MASK \
 	 (REG_VGC_IRQSTATUS__MH_MASK | \
@@ -39,16 +38,12 @@
 #define VGV3_CONTROL_MARKADD_FSHIFT 0
 #define VGV3_CONTROL_MARKADD_FMASK 0xfff
 
-#define Z180_PACKET_SIZE 15
 #define Z180_MARKER_SIZE 10
 #define Z180_CALL_CMD     0x1000
 #define Z180_MARKER_CMD   0x8000
 #define Z180_STREAM_END_CMD 0x9000
 #define Z180_STREAM_PACKET 0x7C000176
 #define Z180_STREAM_PACKET_CALL 0x7C000275
-#define Z180_PACKET_COUNT 8
-#define Z180_RB_SIZE (Z180_PACKET_SIZE*Z180_PACKET_COUNT \
-			  *sizeof(uint32_t))
 
 #define NUMTEXUNITS             4
 #define TEXUNITREGCOUNT         25
@@ -149,7 +144,6 @@ static struct z180_device device_2d0 = {
 			.config = Z180_MMU_CONFIG,
 		},
 		.pwrctrl = {
-			.regulator_name = "fs_gfx2d0",
 			.irq_name = KGSL_2D0_IRQ,
 		},
 		.iomemname = KGSL_2D0_REG_MEMORY,
@@ -177,7 +171,6 @@ static struct z180_device device_2d1 = {
 			.config = Z180_MMU_CONFIG,
 		},
 		.pwrctrl = {
-			.regulator_name = "fs_gfx2d1",
 			.irq_name = KGSL_2D1_IRQ,
 		},
 		.iomemname = KGSL_2D1_REG_MEMORY,
@@ -365,7 +358,7 @@ static int room_in_rb(struct z180_device *device)
 	return ts_diff < Z180_PACKET_COUNT;
 }
 
-static int z180_idle(struct kgsl_device *device, unsigned int timeout)
+static int z180_idle(struct kgsl_device *device)
 {
 	int status = 0;
 	struct z180_device *z180_dev = Z180_DEVICE(device);
@@ -373,7 +366,8 @@ static int z180_idle(struct kgsl_device *device, unsigned int timeout)
 	if (timestamp_cmp(z180_dev->current_timestamp,
 		z180_dev->timestamp) > 0)
 		status = z180_wait(device, NULL,
-				z180_dev->current_timestamp, timeout);
+				z180_dev->current_timestamp,
+				Z180_IDLE_TIMEOUT);
 
 	if (status)
 		KGSL_DRV_ERR(device, "z180_waittimestamp() timed out\n");
@@ -590,7 +584,7 @@ error_clk_off:
 static int z180_stop(struct kgsl_device *device)
 {
 	device->ftbl->irqctrl(device, 0);
-	z180_idle(device, KGSL_TIMEOUT_DEFAULT);
+	z180_idle(device);
 
 	del_timer_sync(&device->idle_timer);
 
@@ -846,6 +840,7 @@ static int z180_wait(struct kgsl_device *device,
 	else if (timeout == 0) {
 		status = -ETIMEDOUT;
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_HUNG);
+		kgsl_postmortem_dump(device, 0);
 	} else
 		status = timeout;
 
@@ -858,7 +853,7 @@ z180_drawctxt_destroy(struct kgsl_device *device,
 {
 	struct z180_device *z180_dev = Z180_DEVICE(device);
 
-	z180_idle(device, KGSL_TIMEOUT_DEFAULT);
+	z180_idle(device);
 
 	if (z180_dev->ringbuffer.prevctx == context->id) {
 		z180_dev->ringbuffer.prevctx = Z180_INVALID_CONTEXT;
@@ -936,6 +931,7 @@ static const struct kgsl_functable z180_functable = {
 	.drawctxt_create = NULL,
 	.drawctxt_destroy = z180_drawctxt_destroy,
 	.ioctl = NULL,
+	.postmortem_dump = z180_dump,
 };
 
 static struct platform_device_id z180_id_table[] = {

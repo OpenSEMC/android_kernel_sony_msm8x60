@@ -143,7 +143,7 @@ TRACE_EVENT(kgsl_waittimestamp_entry,
 	),
 
 	TP_printk(
-		"d_name=%s context_id=%u curr_ts=%u timestamp=0x%x timeout=%u",
+		"d_name=%s context_id=%u curr_ts=0x%x timestamp=0x%x timeout=%u",
 		__get_str(device_name),
 		__entry->context_id,
 		__entry->curr_ts,
@@ -175,7 +175,7 @@ TRACE_EVENT(kgsl_waittimestamp_exit,
 	),
 
 	TP_printk(
-		"d_name=%s curr_ts=%u result=%d",
+		"d_name=%s curr_ts=0x%x result=%d",
 		__get_str(device_name),
 		__entry->curr_ts,
 		__entry->result
@@ -248,6 +248,29 @@ TRACE_EVENT(kgsl_pwrlevel,
 		__get_str(device_name),
 		__entry->pwrlevel,
 		__entry->freq
+	)
+);
+
+TRACE_EVENT(kgsl_mpdcvs,
+
+	TP_PROTO(struct kgsl_device *device, unsigned int state),
+
+	TP_ARGS(device, state),
+
+	TP_STRUCT__entry(
+		__string(device_name, device->name)
+		__field(unsigned int, state)
+	),
+
+	TP_fast_assign(
+		__assign_str(device_name, device->name);
+		__entry->state = state;
+	),
+
+	TP_printk(
+		"d_name=%s %s",
+		__get_str(device_name),
+		__entry->state ? "BUSY" : "IDLE"
 	)
 );
 
@@ -386,7 +409,7 @@ DECLARE_EVENT_CLASS(kgsl_mem_timestamp_template,
 
 	TP_printk(
 		"d_name=%s gpuaddr=0x%08x size=%d type=%d ctx=%u"
-		" curr_ts=0x%08x free_ts=0x%08x",
+		" curr_ts=0x%x free_ts=0x%x",
 		__get_str(device_name),
 		__entry->gpuaddr,
 		__entry->size,
