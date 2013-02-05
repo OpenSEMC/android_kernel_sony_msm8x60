@@ -339,11 +339,9 @@ void mdp_dma_lcdc_vsync_ctrl(int enable)
 
 	if (enable) {
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-		mdp_clk_ctrl(1);
 		mdp3_vsync_irq_enable(LCDC_FRAME_START, MDP_VSYNC_TERM);
 	} else {
 		mdp3_vsync_irq_disable(LCDC_FRAME_START, MDP_VSYNC_TERM);
-		mdp_clk_ctrl(0);
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 }

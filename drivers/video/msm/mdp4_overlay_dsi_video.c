@@ -555,8 +555,8 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 		mipi_dsi_controller_cfg(0);
 		/* Clks are enabled in probe.
 		   Disabling clocks now */
-		// PL: was in 3.4, removed
-		// mdp_clk_ctrl(0);
+		// PL: was in 3.4, removed, now re-enabled
+		mdp_clk_ctrl(0);
 	}
 
 	pipe->src_height = fbi->var.yres;

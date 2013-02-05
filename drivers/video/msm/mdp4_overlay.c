@@ -1541,9 +1541,7 @@ int mdp4_overlay_pipe_staged(int mixer)
 		off = 0x10100;
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-	mdp_clk_ctrl(1);
 	data = inpdw(MDP_BASE + off);
-	mdp_clk_ctrl(0);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);	
 	p1 = 0;
 	p2 = 0;

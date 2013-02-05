@@ -148,19 +148,25 @@ static int footswitch_enable(struct regulator_dev *rdev)
 	struct clk_data *clock;
 	uint32_t regval, rc = 0;
 
+	printk("PL:footswitch_enable(%s)\n",fs->desc.name);
+
 	mutex_lock(&claim_lock);
 	fs->is_claimed = true;
 	mutex_unlock(&claim_lock);
 
 	/* Return early if already enabled. */
 	regval = readl_relaxed(fs->gfs_ctl_reg);
-	if ((regval & (ENABLE_BIT | CLAMP_BIT)) == ENABLE_BIT)
+	if ((regval & (ENABLE_BIT | CLAMP_BIT)) == ENABLE_BIT) {
+	  printk("PL:footswitch_enable(%s), return early, already enabled\n",fs->desc.name);
 		return 0;
+	}
 
 	/* Make sure required clocks are on at the correct rates. */
 	rc = setup_clocks(fs);
-	if (rc)
+	if (rc) {
+	  printk("PL:footswitch_enable(%s), failed on setup_clocks\n",fs->desc.name);
 		return rc;
+	}
 
 	/* Un-halt all bus ports in the power domain. */
 	if (fs->bus_port0) {
@@ -219,12 +225,14 @@ static int footswitch_enable(struct regulator_dev *rdev)
 	restore_clocks(fs);
 
 	fs->is_enabled = true;
+	printk("PL:footswitch_enable(%s)=success",fs->desc.name);
 	return 0;
 
 err_port2_halt:
 	msm_bus_axi_porthalt(fs->bus_port0);
 err:
 	restore_clocks(fs);
+	printk("PL:footswitch_enable(%s)=failure",fs->desc.name);
 	return rc;
 }
 
@@ -571,7 +579,7 @@ static struct clk_data vcap_clks[] = {
 		.bus_port1 = (_bp2), \
 	}
 static struct footswitch footswitches[] = {
-	FOOTSWITCH(FS_GFX2D0, "fs_gfx2d0", &gfx2d_fs_ops,
+  	FOOTSWITCH(FS_GFX2D0, "fs_gfx2d0", &gfx2d_fs_ops,
 		GFX2D0_GFS_CTL_REG, 31, gfx2d0_clks,
 		MSM_BUS_MASTER_GRAPHICS_2D_CORE0, 0),
 	FOOTSWITCH(FS_GFX2D1, "fs_gfx2d1", &gfx2d_fs_ops,
@@ -612,25 +620,35 @@ static int footswitch_probe(struct platform_device *pdev)
 	struct clk_data *clock;
 	uint32_t regval, rc = 0;
 
-	if (pdev == NULL)
-		return -EINVAL;
+	printk("PL:footswitch_probe\n");
 
-	if (pdev->id >= MAX_FS)
+	if (pdev == NULL) {
+	  printk("PL:footswitch_probe failed, no pdev\n");
+		return -EINVAL;
+	}
+
+	if (pdev->id >= MAX_FS) {
+	  printk("PL:footswitch_probe failed, too much fs\n");
 		return -ENODEV;
+	}
 
 	fs = &footswitches[pdev->id];
 	init_data = pdev->dev.platform_data;
 
 	if (pdev->id == FS_MDP) {
+	  printk("PL:footswitch_probe, setting mdp clock\n");
 		if (cpu_is_msm8960() || cpu_is_msm8930())
 			fs->clk_data = mdp_8960_clks;
-		else if (cpu_is_msm8x60())
+		else if (cpu_is_msm8x60()) {
+		  printk("PL:footswitch_probe, setting mdp clock for 8660\n");
 			fs->clk_data = mdp_8660_clks;
+		}
 		else
 			BUG();
 	}
 
 	for (clock = fs->clk_data; clock->name; clock++) {
+	  printk("PL:footswitch_probe, get clock(%s)\n",clock->name);
 		clock->clk = clk_get(&pdev->dev, clock->name);
 		if (IS_ERR(clock->clk)) {
 			rc = PTR_ERR(clock->clk);
@@ -651,6 +669,7 @@ static int footswitch_probe(struct platform_device *pdev)
 	regval &= ~RETENTION_BIT;
 	writel_relaxed(regval, fs->gfs_ctl_reg);
 
+	printk("PL:footswitch_probe, register regulator (%s)\n", fs->desc.name);
 	fs->rdev = regulator_register(&fs->desc, &pdev->dev, init_data, fs);
 	if (IS_ERR(footswitches[pdev->id].rdev)) {
 		pr_err("regulator_register(\"%s\") failed\n",
@@ -658,7 +677,7 @@ static int footswitch_probe(struct platform_device *pdev)
 		rc = PTR_ERR(footswitches[pdev->id].rdev);
 		goto err;
 	}
-
+	printk("PL:footswitch_probe, normal exit\n");
 	return 0;
 
 err:

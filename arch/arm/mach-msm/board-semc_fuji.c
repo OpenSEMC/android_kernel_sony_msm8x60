@@ -4192,7 +4192,7 @@ static struct ion_cp_heap_pdata cp_wb_ion_pdata = {
 
 static struct ion_co_heap_pdata fw_co_ion_pdata = {
 	.adjacent_mem_id = ION_CP_MM_HEAP_ID,
-	.align = SZ_128K,
+	.align = PAGE_SIZE,
 };
 
 static struct ion_co_heap_pdata co_ion_pdata = {
