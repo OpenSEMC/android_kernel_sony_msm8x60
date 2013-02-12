@@ -1061,7 +1061,10 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 		mdp4_dtv_pipe_queue(0, pipe);
 	}
 
+	mdp_update_pm(mfd, vsync_ctrl_db[0].vsync_time);
+
 	mutex_lock(&mfd->dma->ov_mutex);
+	mdp4_overlay_mdp_perf_upd(mfd, 1);
 	mdp4_dtv_pipe_commit(0, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }
