@@ -3194,7 +3194,7 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 
 int mdp4_overlay_wait4vsync(struct fb_info *info)
 {
-        long long vtime;
+	long long vtime;
 
 	if (!hdmi_prim_display && info->node == 0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO)
