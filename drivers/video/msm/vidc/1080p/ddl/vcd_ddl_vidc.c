@@ -380,7 +380,7 @@ static void ddl_vidc_encode_set_profile_level(
 		encode_profile = VIDC_1080P_PROFILE_MPEG4_ADV_SIMPLE;
 	break;
 	case VCD_PROFILE_H264_BASELINE:
-		encode_profile = VIDC_1080P_PROFILE_H264_BASELINE;
+		encode_profile = VIDC_1080P_PROFILE_H264_CONSTRAINED_BASELINE;
 	break;
 	case VCD_PROFILE_H264_MAIN:
 		encode_profile = VIDC_1080P_PROFILE_H264_MAIN;
@@ -867,6 +867,7 @@ void ddl_vidc_encode_slice_batch_run(struct ddl_client_context *ddl)
 	DDL_MEMSET(encoder->batch_frame.slice_batch_in.align_virtual_addr, 0,
 		sizeof(struct vidc_1080p_enc_slice_batch_in_param));
 	encoder->batch_frame.out_frm_next_frmindex = 0;
+	encoder->batch_frame.first_output_frame_tag = 0;
 	bitstream_size = encoder->batch_frame.output_frame[0].vcd_frm.alloc_len;
 	encoder->output_buf_req.sz = bitstream_size;
 	y_addr = DDL_OFFSET(ddl_context->dram_base_b.align_physical_addr,
@@ -959,7 +960,6 @@ void ddl_vidc_encode_slice_batch_run(struct ddl_client_context *ddl)
 		ddl_update_core_start_time(__func__, ENC_SLICE_OP_TIME);
 		ddl_set_core_start_time(__func__, ENC_OP_TIME);
 	}
-	encoder->num_slices_comp = 0;
 	ddl_vidc_encode_set_batch_slice_info(ddl);
 	ddl_context->vidc_encode_slice_batch_start[ddl->command_channel] (
 			&enc_param);
