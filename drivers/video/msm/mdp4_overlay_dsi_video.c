@@ -197,18 +197,6 @@ int mdp4_dsi_video_pipe_commit(int cndx, int wait)
 
 	mdp4_overlay_mdp_perf_upd(vctrl->mfd, 1);
 
-	if (vctrl->blt_change) {
-		pipe = vctrl->base_pipe;
-		spin_lock_irqsave(&vctrl->spin_lock, flags);
-		INIT_COMPLETION(vctrl->dmap_comp);
-		INIT_COMPLETION(vctrl->ov_comp);
-		vsync_irq_enable(INTR_DMA_P_DONE, MDP_DMAP_TERM);
-		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
-		mdp4_dsi_video_wait4dmap(0);
-		if (pipe->ov_blt_addr)
-			mdp4_dsi_video_wait4ov(0);
-	}
-
 	pipe = vp->plist;
 
 	for (i = 0; i < OVERLAY_PIPE_MAX; i++, pipe++) {
