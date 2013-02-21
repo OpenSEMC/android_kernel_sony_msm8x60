@@ -29,13 +29,22 @@
 
 #define LC898300_REG_HBPW       0x01
 #define LC898300_REG_RESOFRQ    0x02
-#define LC898300_MIN_ON      10
+#define LC898300_REG_STARTUP    0x03
+#define LC898300_REG_BRAKE      0x04
+#define LC898300_REG_STOPS      0x05
+#define LC898300_MIN_ON         8
+#define LC898300_OFF_DELAY      10
+#define LC898300_BRAKE_TIME     40
+#define LC898300_RESUME_DELAY   100
 
-enum vib_cmd_conf {
-	VIB_CMD_PROBE,
-	VIB_CMD_SUSPEND,
-	VIB_CMD_RESUME,
-	VIB_CMD_REMOVE,
+static int gIntensity = VIB_CMD_PWM_8_15;
+static unsigned long intensity;
+
+enum vib_state {
+	VIB_OFF,
+	VIB_TAKE_OFF,
+	VIB_ON,
+	VIB_LANDING,
 };
 
 struct lc898300_data {
@@ -48,6 +57,8 @@ struct lc898300_data {
 	bool suspended;
 	bool on;
 };
+
+static int lc898300_set_intensity(struct lc898300_data *data, int val);
 
 static const struct i2c_device_id lc898300_id[] = {
 	{ LC898300_I2C_NAME, 0 },
@@ -152,7 +163,63 @@ static int lc898300_configure(struct lc898300_data *data, int val)
 		}
 	}
 
-	return rc;
+	if (t > 0) {
+		forward_timer(data, t);
+		ret = HRTIMER_RESTART;
+	} else
+		ret = HRTIMER_NORESTART;
+	return ret;
+}
+
+static void request_vib_off(struct lc898300_data *data)
+{
+	int rc;
+	int remain;
+
+	rc = hrtimer_cancel(&data->vib_timer);
+	remain = rc ? ktime_to_ms(hrtimer_get_remaining(&data->vib_timer)) : -1;
+
+	dev_dbg(data->dev, "%s: state %d, timer active %d, remaining %d ms\n",
+		__func__, data->on, rc, remain);
+
+	if (remain <= 0)
+		/* add 1 ms to complete the acion */
+		remain = 1;
+
+	switch (data->on) {
+	case VIB_TAKE_OFF:
+		dev_dbg(data->dev, "%s: killed on take-off\n", __func__);
+		data->on_time = LC898300_OFF_DELAY - remain;
+		start_timer(data, remain);
+		break;
+
+	case VIB_ON:
+		dev_dbg(data->dev, "%s: killed while active\n", __func__);
+		data->on_time = 0;
+		start_timer(data, LC898300_OFF_DELAY);
+		break;
+
+	case VIB_LANDING:
+		dev_dbg(data->dev, "%s: killed while landing\n", __func__);
+		data->on_time = 0;
+		start_timer(data, remain);
+		break;
+	case VIB_OFF:
+	default:
+		dev_dbg(data->dev, "%s: not active\n", __func__);
+		break;
+	}
+}
+
+static void lc898300_vib_enable(struct timed_output_dev *dev, int value)
+{
+	struct lc898300_data *data = container_of(dev, struct lc898300_data,
+					 timed_dev);
+
+	/* set intensity */
+	lc898300_set_intensity(data, gIntensity);
+
+	dev_dbg(data->dev, "%s: %d msec\n", __func__, value);
 
 error2:
 	pdata->power_config(data->dev, false);
@@ -175,12 +242,293 @@ static int lc898300_vib_get_time(struct timed_output_dev *dev)
 	}
 }
 
-static enum hrtimer_restart vibrator_timer_func(struct hrtimer *timer)
+static void lc898300_resume_work(struct work_struct *work)
+{
+	struct lc898300_data *data =
+		container_of(work, struct lc898300_data, resume_work.work);
+
+	atomic_set(&data->resuming, 0);
+	wake_up(&data->resume_queue);
+}
+
+static ssize_t lc898300_intensity_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int val;
+
+	mutex_lock(&data->lock);
+	val = data->pdata->vib_cmd_info->vib_cmd_intensity;
+	mutex_unlock(&data->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%hhx\n", val);
+}
+
+static ssize_t lc898300_intensity_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int rc;
+	unsigned long val;
+
+	rc = kstrtoul(buf, 16, &val);
+	if (rc) {
+		dev_err(&data->client->dev, "%s(): strtoul failed, result=%d\n",
+								__func__, rc);
+		return -EINVAL;
+	}
+
+	if (val > VIB_CMD_PWM_15_15)
+		return -EINVAL;
+
+	mutex_lock(&data->lock);
+	data->pdata->vib_cmd_info->vib_cmd_intensity = val;
+	mutex_unlock(&data->lock);
+
+	return strnlen(buf, count);
+}
+
+static ssize_t lc898300_resonance_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int val;
+
+	mutex_lock(&data->lock);
+	val = data->pdata->vib_cmd_info->vib_cmd_resonance;
+	mutex_unlock(&data->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%hhx\n", val);
+}
+
+static ssize_t lc898300_resonance_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int rc;
+	unsigned long val;
+
+	rc = kstrtoul(buf, 16, &val);
+	if (rc) {
+		dev_err(&data->client->dev, "%s(): strtoul failed, result=%d\n",
+								__func__, rc);
+		return -EINVAL;
+	}
+
+	if (val > VIB_CMD_FREQ_200)
+		return -EINVAL;
+
+	mutex_lock(&data->lock);
+	data->pdata->vib_cmd_info->vib_cmd_resonance = val;
+	mutex_unlock(&data->lock);
+
+	return strnlen(buf, count);
+}
+
+static ssize_t lc898300_startup_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int val;
+
+	mutex_lock(&data->lock);
+	val = data->pdata->vib_cmd_info->vib_cmd_startup;
+	mutex_unlock(&data->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%hhx\n", val);
+}
+
+static ssize_t lc898300_startup_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int rc;
+	unsigned long val;
+
+	rc = kstrtoul(buf, 16, &val);
+	if (rc) {
+		dev_err(&data->client->dev, "%s(): strtoul failed, result=%d\n",
+								__func__, rc);
+		return -EINVAL;
+	}
+
+	if (val > VIB_CMD_STTIME_7)
+		return -EINVAL;
+
+	mutex_lock(&data->lock);
+	data->pdata->vib_cmd_info->vib_cmd_startup = val;
+	mutex_unlock(&data->lock);
+
+	return strnlen(buf, count);
+}
+
+static ssize_t lc898300_brake_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int val;
+
+	mutex_lock(&data->lock);
+	val = data->pdata->vib_cmd_info->vib_cmd_brake;
+	mutex_unlock(&data->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%hhx\n", val);
+}
+
+static ssize_t lc898300_brake_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int rc;
+	unsigned long val;
+
+	rc = kstrtoul(buf, 16, &val);
+	if (rc) {
+		dev_err(&data->client->dev, "%s(): strtoul failed, result=%d\n",
+								__func__, rc);
+		return -EINVAL;
+	}
+
+	if (val > (VIB_CMD_BRPWR_15_15 | VIB_CMD_BRTIME_3 | VIB_CMD_ATBR))
+		return -EINVAL;
+
+	mutex_lock(&data->lock);
+	data->pdata->vib_cmd_info->vib_cmd_brake = val;
+	mutex_unlock(&data->lock);
+
+	return strnlen(buf, count);
+}
+
+static ssize_t lc898300_stops_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int val;
+
+	mutex_lock(&data->lock);
+	val = data->pdata->vib_cmd_info->vib_cmd_stops;
+	mutex_unlock(&data->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%hhx\n", val);
+}
+
+static ssize_t attr_intensity_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int count;
+
+	count = sprintf(buf, "%d\n", gIntensity);
+	pr_info("[lc898300] current intensity: %d\n", gIntensity);
+
+	return count;
+}
+
+static ssize_t lc898300_stops_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct lc898300_data *data  = dev_get_drvdata(dev);
+	int rc;
+	unsigned long val;
+
+	rc = kstrtoul(buf, 16, &val);
+	if (rc) {
+		dev_err(&data->client->dev, "%s(): strtoul failed, result=%d\n",
+								__func__, rc);
+		return -EINVAL;
+	}
+
+	if (val > (VIB_CMD_ATSNUM_MASK  | VIB_CMD_ATSON) || (val & 0xf) >
+							VIB_CMD_ATSNUM_10_10)
+		return -EINVAL;
+
+	mutex_lock(&data->lock);
+	data->pdata->vib_cmd_info->vib_cmd_stops = val;
+	mutex_unlock(&data->lock);
+
+	return strnlen(buf, count);
+}
+
+ssize_t attr_intensity_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	if (kstrtoul(buf, 0, &intensity))
+		pr_err("[lc898300] error while storing new intensity\n");
+
+	/* make sure new intensity is in range */
+	if(intensity > VIB_CMD_PWM_15_15) {
+		intensity = VIB_CMD_PWM_15_15;
+	} else if (intensity < VIB_CMD_PWM_OFF) {
+		intensity = VIB_CMD_PWM_OFF;
+	}
+	gIntensity = intensity;
+	pr_info("[lc898300] new intensity: %d\n", gIntensity);
+
+	return size;
+}
+
+static struct device_attribute attributes[] = {
+	__ATTR(lc898300_intensity, S_IRUGO | S_IWUSR,
+		lc898300_intensity_show, lc898300_intensity_store),
+	__ATTR(lc898300_resonance, S_IRUGO | S_IWUSR,
+		lc898300_resonance_show, lc898300_resonance_store),
+	__ATTR(lc898300_startup, S_IRUGO | S_IWUSR,
+		lc898300_startup_show, lc898300_startup_store),
+	__ATTR(lc898300_brake, S_IRUGO | S_IWUSR,
+		lc898300_brake_show, lc898300_brake_store),
+	__ATTR(lc898300_stops, S_IRUGO | S_IWUSR,
+		lc898300_stops_show, lc898300_stops_store),
+	__ATTR(intensity, 0660,
+		attr_intensity_show, attr_intensity_store),
+};
+
+static int add_sysfs_interfaces(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(attributes); i++)
+		if (device_create_file(dev, attributes + i))
+			goto undo;
+	return 0;
+undo:
+	for (--i; i >= 0; i--)
+		device_remove_file(dev, attributes + i);
+	dev_err(dev, "%s: failed to create sysfs interface\n", __func__);
+	return -ENODEV;
+}
+
+static void remove_sysfs_interfaces(struct device *dev)
 {
 	struct lc898300_data *data = container_of(timer, struct lc898300_data,
 							 vib_timer);
 	vib_off(data);
 	return HRTIMER_NORESTART;
+}
+
+static int lc898300_set_intensity(struct lc898300_data *data, int val)
+{
+	struct lc898300_platform_data *pdata = data->pdata;
+	struct lc898300_vib_cmd *vib_cmd_info = pdata->vib_cmd_info;
+	int rc = 0;
+
+	vib_cmd_info->vib_cmd_intensity = val;
+	rc = i2c_smbus_write_i2c_block_data(data->client, LC898300_REG_HBPW, 4,
+					&vib_cmd_info->vib_cmd_intensity);
+
+	if (rc)
+		dev_err(data->dev, "Failed to set intensity\n");
+
+	return rc;
 }
 
 static int __devinit lc898300_probe(struct i2c_client *client,
