@@ -24,11 +24,7 @@ enum { ASYNC, SYNC };
 
 /* Tunables */
 static const int sync_read_expire  = HZ / 2;	/* max time before a sync read is submitted. */
-<<<<<<< HEAD
 static const int sync_write_expire = 2 * HZ;	/* max time before a sync write is submitted. */
-=======
-static const int sync_write_expire = 4 * HZ;	/* max time before a sync write is submitted. */
->>>>>>> c036588... block: add sio/vr schedulers
 
 static const int async_read_expire  =  4 * HZ;	/* ditto for async, these limits are SOFT! */
 static const int async_write_expire = 16 * HZ;	/* ditto for async, these limits are SOFT! */
@@ -394,15 +390,11 @@ static void __exit sio_exit(void)
 	elv_unregister(&iosched_sio);
 }
 
-<<<<<<< HEAD
 #ifdef CONFIG_FAST_RESUME
 beforeresume_initcall(sio_init);
 #else
 module_init(sio_init);
 #endif
-=======
-module_init(sio_init);
->>>>>>> c036588... block: add sio/vr schedulers
 module_exit(sio_exit);
 
 MODULE_AUTHOR("Miguel Boton");
