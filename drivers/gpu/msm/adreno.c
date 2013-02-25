@@ -1574,7 +1574,7 @@ static unsigned int _get_context_id(struct kgsl_context *k_ctxt)
 	return context_id;
 }
 
-static void adreno_next_event(struct kgsl_device *device,
+static int adreno_next_event(struct kgsl_device *device,
 	struct kgsl_event *event)
 {
 	int status;
@@ -1619,6 +1619,7 @@ static void adreno_next_event(struct kgsl_device *device,
 					KGSL_CMD_FLAGS_NONE, &cmds[0], 2);
 		}
 	}
+	return status;
 }
 
 static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
