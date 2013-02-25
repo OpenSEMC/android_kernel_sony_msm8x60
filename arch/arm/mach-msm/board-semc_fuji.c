@@ -199,6 +199,10 @@
 #define DSPS_PIL_GENERIC_NAME		"dsps"
 #define DSPS_PIL_FLUID_NAME		"dsps_fluid"
 
+#ifdef CONFIG_CPU_FREQ_GOV_INTELLIDEMAND
+int id_set_two_phase_freq(int cpufreq);
+#endif
+
 #ifdef CONFIG_ION_MSM
 static struct platform_device ion_dev;
 #endif
@@ -7773,6 +7777,11 @@ static struct msm_board_data msm8x60_fuji_board_data __initdata = {
 
 static void __init msm8x60_init(struct msm_board_data *board_data)
 {
+
+	#ifdef CONFIG_CPU_FREQ_GOV_INTELLIDEMAND
+	  id_set_two_phase_freq(1134000);
+	#endif	
+
 	uint32_t soc_platform_version;
 
 	pmic_reset_irq = PM8058_IRQ_BASE + PM8058_RESOUT_IRQ;
