@@ -60,9 +60,6 @@
 #define DBS_PERFLOCK_MIN_FREQ      (702000)
 #endif
 
-#define BOOT_CPU 0
-
-u64 freq_boosted_time;
 /*
  * The polling frequency of this governor depends on the capability of
  * the processor. Default polling frequency is 1000 times the transition
@@ -89,9 +86,10 @@ static unsigned long stored_sampling_rate;
 
 /* have the timer rate booted for this much time 2.5s*/
 #define TIMER_RATE_BOOST_TIME 2500000
-int sampling_rate_boosted;
-u64 sampling_rate_boosted_time;
-unsigned int current_sampling_rate;
+int id_sampling_rate_boosted;
+u64 id_sampling_rate_boosted_time;
+unsigned int id_current_sampling_rate;
+u64 id_freq_boosted_time;
 
 #ifdef CONFIG_CPUFREQ_ID_PERFLOCK
 static unsigned int saved_policy_min;
@@ -425,11 +423,11 @@ static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
         return ret;
 
     dbs_tuners_ins.boosted = 1;
-    freq_boosted_time = ktime_to_us(ktime_get());
+    id_freq_boosted_time = ktime_to_us(ktime_get());
 
-    if (sampling_rate_boosted) {
-        sampling_rate_boosted = 0;
-        dbs_tuners_ins.sampling_rate = current_sampling_rate;
+    if (id_sampling_rate_boosted) {
+        id_sampling_rate_boosted = 0;
+        dbs_tuners_ins.sampling_rate = id_current_sampling_rate;
     }
     return count;
 }
@@ -512,7 +510,7 @@ static ssize_t store_sampling_rate(struct kobject *a, struct attribute *b,
 	if (ret != 1)
 		return -EINVAL;
 	update_sampling_rate(input);
-	current_sampling_rate = dbs_tuners_ins.sampling_rate;
+	id_current_sampling_rate = dbs_tuners_ins.sampling_rate;
 	return count;
 }
 
@@ -969,16 +967,16 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 	/* Only core0 controls the boost */
         if (dbs_tuners_ins.boosted && policy->cpu == 0) {
-            if (ktime_to_us(ktime_get()) - freq_boosted_time >= dbs_tuners_ins.freq_boost_time) {
+            if (ktime_to_us(ktime_get()) - id_freq_boosted_time >= dbs_tuners_ins.freq_boost_time) {
                 dbs_tuners_ins.boosted = 0;
             }
         }
 
 	/* Only core0 controls the timer_rate */
-        if (sampling_rate_boosted && policy->cpu == 0) {
-            if (ktime_to_us(ktime_get()) - sampling_rate_boosted_time >= TIMER_RATE_BOOST_TIME) {
-                dbs_tuners_ins.sampling_rate = current_sampling_rate;
-                sampling_rate_boosted = 0;
+        if (id_sampling_rate_boosted && policy->cpu == 0) {
+            if (ktime_to_us(ktime_get()) - id_sampling_rate_boosted_time >= TIMER_RATE_BOOST_TIME) {
+                dbs_tuners_ins.sampling_rate = id_current_sampling_rate;
+                id_sampling_rate_boosted = 0;
             }
         }
 
@@ -1109,7 +1107,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		} else {
 			/* busy phase */
 			if (policy->cur < policy->max) {
-			    if (sampling_rate_boosted && (dbs_tuners_ins.sampling_down_factor < BOOSTED_SAMPLING_DOWN_FACTOR)) {
+			    if (id_sampling_rate_boosted && (dbs_tuners_ins.sampling_down_factor < BOOSTED_SAMPLING_DOWN_FACTOR)) {
 			        this_dbs_info->rate_mult = BOOSTED_SAMPLING_DOWN_FACTOR;
 			    } else {
 			        this_dbs_info->rate_mult = dbs_tuners_ins.sampling_down_factor;
@@ -1192,12 +1190,12 @@ if (num_online_cpus() > 1) {
 #ifdef CONFIG_CPUFREQ_LIMIT_MAX_FREQ
 
 enum {	
-	SET_MIN = 0,	
+	SET_MIN,
 	SET_MAX
 };
 
-enum {	
-	BOOT_CPU = 0,	
+enum {
+	BOOT_CPU,
 	NON_BOOT_CPU
 };
 
@@ -1710,10 +1708,10 @@ static void dbs_input_event(struct input_handle *handle, unsigned int type,
 			return;
 		}
 
-                if (current_sampling_rate > BOOSTED_SAMPLING_RATE) {
+                if (id_current_sampling_rate > BOOSTED_SAMPLING_RATE) {
                     dbs_tuners_ins.sampling_rate = BOOSTED_SAMPLING_RATE;
-                    sampling_rate_boosted_time = ktime_to_us(ktime_get());
-                    sampling_rate_boosted = 1;
+                    id_sampling_rate_boosted_time = ktime_to_us(ktime_get());
+                    id_sampling_rate_boosted = 1;
                 }
 
 		for_each_online_cpu(i) {
