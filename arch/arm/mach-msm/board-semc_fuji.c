@@ -7778,11 +7778,11 @@ static struct msm_board_data msm8x60_fuji_board_data __initdata = {
 static void __init msm8x60_init(struct msm_board_data *board_data)
 {
 
+	uint32_t soc_platform_version;
+
 	#ifdef CONFIG_CPU_FREQ_GOV_INTELLIDEMAND
 	  id_set_two_phase_freq(1134000);
-	#endif	
-
-	uint32_t soc_platform_version;
+	#endif
 
 	pmic_reset_irq = PM8058_IRQ_BASE + PM8058_RESOUT_IRQ;
 	/*
