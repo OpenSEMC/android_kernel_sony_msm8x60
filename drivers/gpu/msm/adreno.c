@@ -1419,16 +1419,15 @@ static unsigned int adreno_isidle(struct kgsl_device *device)
 		GSL_RB_GET_READPTR(rb, &rb->rptr);
 		if (!device->active_cnt && (rb->rptr == rb->wptr)) {
 			/* Is the core idle? */
-			adreno_regread(device,
+			if (adreno_dev->gpudev->irq_pending(adreno_dev) == 0) {
+				adreno_regread(device,
 				adreno_dev->gpudev->reg_rbbm_status,
-				&rbbm_status);
-
-			if (adreno_is_a2xx(adreno_dev)) {
+							&rbbm_status);
 				if (rbbm_status == 0x110)
 					status = true;
-			} else {
-				if (!(rbbm_status & 0x80000000))
-					status = true;
+				} else {
+					if (!(rbbm_status & 0x80000000))
+						status = true;
 			}
 		}
 	} else {
