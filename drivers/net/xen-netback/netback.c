@@ -860,20 +860,23 @@ static int netbk_count_requests(struct xenvif *vif,
 
 	do {
 		if (frags >= work_to_do) {
-			netdev_dbg(vif->dev, "Need more frags\n");
-			return -frags;
+			netdev_err(vif->dev, "Need more frags\n");
+			netbk_fatal_tx_err(vif);
+			return -ENODATA;
 		}
 
 		if (unlikely(frags >= MAX_SKB_FRAGS)) {
-			netdev_dbg(vif->dev, "Too many frags\n");
-			return -frags;
+			netdev_err(vif->dev, "Too many frags\n");
+			netbk_fatal_tx_err(vif);
+			return -E2BIG;
 		}
 
 		memcpy(txp, RING_GET_REQUEST(&vif->tx, cons + frags),
 		       sizeof(*txp));
 		if (txp->size > first->size) {
-			netdev_dbg(vif->dev, "Frags galore\n");
-			return -frags;
+			netdev_err(vif->dev, "Frag is bigger than frame.\n");
+			netbk_fatal_tx_err(vif);
+			return -EIO;
 		}
 
 		first->size -= txp->size;
@@ -882,7 +885,8 @@ static int netbk_count_requests(struct xenvif *vif,
 		if (unlikely((txp->offset + txp->size) > PAGE_SIZE)) {
 			netdev_dbg(vif->dev, "txp->offset: %x, size: %u\n",
 				 txp->offset, txp->size);
-			return -frags;
+			netbk_fatal_tx_err(vif);
+			return -EINVAL;
 		}
 	} while ((txp++)->flags & XEN_NETTXF_more_data);
 	return frags;
