@@ -2580,6 +2580,60 @@ static void __init register_i2c_devices(void)
 #endif
 }
 
+/* Modify platform data values to match requirements for PM8917. */
+static void __init msm8930_pm8917_pdata_fixup(void)
+{
+	struct acpuclk_platform_data *pdata;
+
+	mhl_platform_data.gpio_mhl_power = MHL_POWER_GPIO_PM8917;
+
+	gpio_keys_8930_pdata.buttons = keys_8930_pm8917;
+	gpio_keys_8930_pdata.nbuttons = ARRAY_SIZE(keys_8930_pm8917);
+
+	msm_device_saw_core0.dev.platform_data
+		= &msm8930_pm8038_saw_regulator_core0_pdata;
+	msm_device_saw_core1.dev.platform_data
+		= &msm8930_pm8038_saw_regulator_core1_pdata;
+
+	msm8930_device_rpm_regulator.dev.platform_data
+		= &msm8930_pm8917_rpm_regulator_pdata;
+
+	pdata = msm8930_device_acpuclk.dev.platform_data;
+	pdata->uses_pm8917 = true;
+
+	pdata = msm8930ab_device_acpuclk.dev.platform_data;
+	pdata->uses_pm8917 = true;
+}
+
+static void __init msm8930ab_update_retention_spm(void)
+{
+	int i;
+
+	/* Update the SPM sequences for krait retention on all cores */
+	for (i = 0; i < ARRAY_SIZE(msm_spm_data); i++) {
+		int j;
+		struct msm_spm_platform_data *pdata = &msm_spm_data[i];
+		for (j = 0; j < pdata->num_modes; j++) {
+			if (pdata->modes[j].cmd ==
+					spm_retention_cmd_sequence)
+				pdata->modes[j].cmd =
+				spm_retention_with_krait_v3_cmd_sequence;
+		}
+	}
+}
+
+#ifdef CONFIG_SERIAL_MSM_HS
+static struct msm_serial_hs_platform_data msm_uart_dm9_pdata = {
+	.config_gpio	= 4,
+	.uart_tx_gpio	= 93,
+	.uart_rx_gpio	= 94,
+	.uart_cts_gpio	= 95,
+	.uart_rfr_gpio	= 96,
+};
+#else
+static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
+#endif
+
 static void __init msm8930_cdp_init(void)
 {
 	if (meminfo_init(SYS_MEMORY, SZ_256M) < 0)
