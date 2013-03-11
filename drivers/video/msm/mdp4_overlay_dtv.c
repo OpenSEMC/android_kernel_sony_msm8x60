@@ -55,6 +55,14 @@ static void __mdp_outp(uint32 port, uint32 value)
 static int first_pixel_start_x;
 static int first_pixel_start_y;
 
+void mdp4_dtv_base_swap(int cndx, struct mdp4_overlay_pipe *pipe)
+{
+#ifdef BYPASS4
+	if (hdmi_prim_display)
+		dtv_pipe = pipe;
+#endif
+}
+
 #define MAX_CONTROLLER	1
 
 static struct vsycn_ctrl {
@@ -340,6 +348,7 @@ ssize_t mdp4_dtv_show_event(struct device *dev,
 		buf[strlen(buf) + 1] = '\0';
 		return ret;
 	}
+
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	vsync_tick = ktime_to_ns(vctrl->vsync_time);
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
@@ -372,24 +381,6 @@ void mdp4_dtv_vsync_init(int cndx)
 	atomic_set(&vctrl->suspend, 1);
 	atomic_set(&vctrl->vsync_resume, 1);
 	spin_lock_init(&vctrl->spin_lock);
-}
-
-void mdp4_dtv_base_swap(int cndx, struct mdp4_overlay_pipe *pipe)
-{
-	struct vsycn_ctrl *vctrl;
-
-	if (!hdmi_prim_display) {
-		pr_err("%s: failed, hdmi is not primary\n", __func__);
-		return;
-	}
-
-	if (cndx >= MAX_CONTROLLER) {
-		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
-		return;
-	}
-
-	vctrl = &vsync_ctrl_db[cndx];
-	vctrl->base_pipe = pipe;
 }
 
 static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
@@ -640,9 +631,7 @@ int mdp4_dtv_off(struct platform_device *pdev)
 			vctrl->base_pipe = NULL;
 		}
 	}
-
-	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
-
+ 
 	if (vctrl->vsync_irq_enabled) {
 		vctrl->vsync_irq_enabled = 0;
 		vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
@@ -657,6 +646,8 @@ int mdp4_dtv_off(struct platform_device *pdev)
 		 */
 		vp->update_cnt = 0;     /* empty queue */
 	}
+
+	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
 
 	ret = panel_next_off(pdev);
 	mdp_footswitch_ctrl(FALSE);
@@ -885,8 +876,6 @@ void mdp4_dmae_done_dtv(void)
 
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
-	if (pipe == NULL)
-		return;
 	pr_debug("%s: cpu=%d\n", __func__, smp_processor_id());
 
 	spin_lock(&vctrl->spin_lock);
@@ -927,8 +916,6 @@ void mdp4_overlay1_done_dtv(void)
 
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
-	if (pipe == NULL)
-		return;
 
 	spin_lock(&vctrl->spin_lock);
 	if (pipe->ov_blt_addr == 0) {

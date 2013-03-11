@@ -1375,8 +1375,8 @@ int mdp_ppp_pipe_wait(void)
 }
 
 static DEFINE_SPINLOCK(mdp_lock);
-static int mdp_irq_mask;
-static int mdp_irq_enabled;
+int mdp_irq_mask;
+int mdp_irq_enabled;
 
 /*
  * mdp_enable_irq: can not be called from isr
@@ -1998,6 +1998,7 @@ static void mdp_drv_init(void)
 	dma2_data.dmap_busy = FALSE;
 	dma2_data.waiting = FALSE;
 	init_completion(&dma2_data.comp);
+	init_completion(&vsync_cntrl.vsync_comp);
 	init_completion(&dma2_data.dmap_comp);
 	sema_init(&dma2_data.mutex, 1);
 	mutex_init(&dma2_data.ov_mutex);
@@ -2174,6 +2175,9 @@ static int mdp_on(struct platform_device *pdev)
 				mfd->panel.type == LCDC_PANEL ||
 				mfd->panel.type == LVDS_PANEL) {
 			mdp4_lcdc_on(pdev);
+		} else if (mfd->panel.type == MDDI_PANEL) {
+			mdp_vsync_cfg_regs(mfd, FALSE);
+			mdp4_mddi_on(pdev);
 		}
 
 		mdp_clk_ctrl(0);

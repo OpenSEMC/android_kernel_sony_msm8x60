@@ -130,10 +130,11 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
+	pr_debug("%s-:\n", __func__);
+
 	return ret;
 }
 
-extern struct mdp4_overlay_perf perf_current;
 static int mipi_dsi_on(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -317,8 +318,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
-	perf_current.mdp_bw = OVERLAY_PERF_LEVEL4;
-	perf_current.mdp_clk_rate = 0;
 #endif
 
 	if (mdp_rev >= MDP_REV_41)
@@ -326,7 +325,11 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
+<<<<<<< HEAD
 	pr_debug("End of %s....:\n", __func__);
+=======
+	pr_debug("%s-:\n", __func__);
+>>>>>>> f994901... add missing stuff from @Andromadus kernel after this merging madness
 
 	return ret;
 }
