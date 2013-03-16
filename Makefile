@@ -4,6 +4,15 @@ SUBLEVEL = 0
 EXTRAVERSION = +1.0.21100
 NAME = Saber-toothed Squirrel
 
+# *EOS KERNEL TWEAKS DOCUMENTATION*
+# EOS= variable defines the level of optimizations
+# you want to set during the compilation.
+# Use 0 for compiling without any optimizations at all.
+# Use 1 for a basic optimizations set.
+# Use 2 for an advanced optimizations set.
+# NOTE: You MUST set this variable, else compiling will fail.
+EOS=2
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
@@ -351,10 +360,34 @@ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-CFLAGS_MODULE   =
+
+ifeq ($(EOS),2)
+CFLAGS_MODULE	= -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops -Wno-unused-but-set-variable -mno-unaligned-access -fno-pic
+endif
+			
+ifeq ($(EOS),1)
+CFLAGS_MODULE	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+endif
+
+ifeq ($(EOS),0)
+CFLAGS_MODULE	=
+endif
+			
 AFLAGS_MODULE   =
 LDFLAGS_MODULE  =
+
+ifeq ($(EOS),2)
+CFLAGS_KERNEL	= -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+endif
+
+ifeq ($(EOS),1)
+CFLAGS_KERNEL	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+endif
+
+ifeq ($(EOS),0)
 CFLAGS_KERNEL	=
+endif
+
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
