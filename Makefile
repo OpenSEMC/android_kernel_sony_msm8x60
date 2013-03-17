@@ -362,11 +362,11 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 
 ifeq ($(EOS),2)
-CFLAGS_MODULE	= -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops -Wno-unused-but-set-variable -mno-unaligned-access -fno-pic
+CFLAGS_MODULE	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -funswitch-loops -fno-pic
 endif
 			
 ifeq ($(EOS),1)
-CFLAGS_MODULE	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+CFLAGS_MODULE	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -funswitch-loops
 endif
 
 ifeq ($(EOS),0)
@@ -377,11 +377,11 @@ AFLAGS_MODULE   =
 LDFLAGS_MODULE  =
 
 ifeq ($(EOS),2)
-CFLAGS_KERNEL	= -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+CFLAGS_KERNEL	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -mfloat-abi=softfp -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -funswitch-loops
 endif
 
 ifeq ($(EOS),1)
-CFLAGS_KERNEL	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -ftree-vectorize -funswitch-loops
+CFLAGS_KERNEL	= -mtune=cortex-a9 -mfpu=vfpv3-d16 -ftree-vectorize -ffast-math -fsingle-precision-constant -marm --param l2-cache-size=1024 -funswitch-loops
 endif
 
 ifeq ($(EOS),0)
