@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1378,8 +1378,7 @@ static void add_supported_video_format(
 		if (video_format == external_common_state->video_resolution) {
 			DEV_DBG("%s: Default resolution %d [%s] supported\n",
 					__func__, video_format,
-					msm_hdmi_mode_2string(video_format));
-			external_common_state->default_res_supported = true;
+					video_format_2string(video_format));
 		}
 	}
 }
@@ -1823,7 +1822,6 @@ int hdmi_common_read_edid(void)
 		sizeof(external_common_state->spkr_alloc_data_block));
 	external_common_state->adb_size = 0;
 	external_common_state->sadb_size = 0;
-	external_common_state->default_res_supported = false;
 
 	status = hdmi_common_read_edid_block(0, edid_buf);
 	if (status || !check_edid_header(edid_buf)) {
@@ -1929,7 +1927,6 @@ error:
 	external_common_state->disp_mode_list.num_of_elements = 1;
 	external_common_state->disp_mode_list.disp_mode_list[0] =
 		external_common_state->video_resolution;
-	external_common_state->default_res_supported = true;
 	return status;
 }
 EXPORT_SYMBOL(hdmi_common_read_edid);
