@@ -4,6 +4,23 @@
 #include <linux/radix-tree.h>
 #include <linux/rcupdate.h>
 
+struct ioc_builder;
+struct dev_io_context {
+        void *key;
+        struct io_context *ioc;
+
+        struct list_head queue_list;
+        struct hlist_node cic_list;
+
+        void (*dtor)(struct io_context *); /* destructor */
+        void (*exit)(struct io_context *); /* called on task exit */
+
+        struct rcu_head rcu_head;
+
+        struct ioc_builder *builder;
+};
+
+
 struct cfq_queue;
 struct cfq_io_context {
 	void *key;
