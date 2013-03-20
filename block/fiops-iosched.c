@@ -182,8 +182,7 @@ static void fiops_service_tree_add(struct fiops_data *fiopsd,
 	ioc->vios = vios;
 	rb_link_node(&ioc->rb_node, parent, p);
 	rb_insert_color(&ioc->rb_node, &service_tree->rb);
-	service_tree->count;
-
+	service_tree->count++; /* Fix the compilation error */
 	fiops_update_min_vios(service_tree);
 }
 
