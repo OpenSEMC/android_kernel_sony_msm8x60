@@ -182,8 +182,7 @@ static void fiops_service_tree_add(struct fiops_data *fiopsd,
 	ioc->vios = vios;
 	rb_link_node(&ioc->rb_node, parent, p);
 	rb_insert_color(&ioc->rb_node, &service_tree->rb);
-	service_tree->count;
-
+	service_tree->count++; /* Fix the compilation error */
 	fiops_update_min_vios(service_tree);
 }
 
@@ -294,7 +293,7 @@ static int fiops_forced_dispatch(struct fiops_data *fiopsd)
 	while ((ioc = fiops_rb_first(&fiopsd->service_tree)) != NULL) {
 		while (!list_empty(&ioc->fifo)) {
 			fiops_dispatch_request(fiopsd, ioc);
-			dispatched;
+			dispatched++; /* Fix: increments "dispatched" */
 		}
 		if (fiops_ioc_on_rr(ioc))
 			fiops_del_ioc_rr(fiopsd, ioc);
@@ -419,7 +418,7 @@ fiops_find_rq_fmerge(struct fiops_data *fiopsd, struct bio *bio)
 	cic = dev_ioc_to_fiops_ioc(gen_cic);
 
 	if (cic) {
-		sector_t sector = bio->bi_sector  bio_sectors(bio);
+		sector_t sector = bio->bi_sector + bio_sectors(bio); /* Fix: '+' was missing" */
 
 		return elv_rb_find(&cic->sort_list, sector);
 	}
