@@ -2161,6 +2161,8 @@ void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe)
 
 }
 
+static int mdp4_calc_pipe_mdp_clk(struct msm_fb_data_type *mfd, struct mdp4_overlay_pipe *pipe);
+
 static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 			struct mdp4_overlay_pipe **ppipe,
 			struct msm_fb_data_type *mfd)
