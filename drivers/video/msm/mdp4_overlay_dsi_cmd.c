@@ -261,7 +261,7 @@ static void mdp4_dsi_cmd_pipe_clean(struct vsync_update *vp)
     }
   }
   pr_warn("%s: update_cnt=%d\n", __func__, vp->update_cnt);
-    mdp4_dsi_cmd_pipe_clean(vp);
+    vp->update_cnt = 0;     /* empty queue */
 }
 
 static void mdp4_dsi_cmd_blt_ov_update(struct mdp4_overlay_pipe *pipe);
@@ -1093,7 +1093,7 @@ int mdp4_dsi_cmd_off(struct platform_device *pdev)
 		 * pipe's iommu will be freed at next overlay play
 		 * and iommu_drop statistic will be increased by one
 		 */
-		vp->update_cnt = 0;     /* empty queue */
+		mdp4_dsi_cmd_pipe_clean(vp);
 	}
 
 	vctrl->clk_enabled = 0;
