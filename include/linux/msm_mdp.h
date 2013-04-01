@@ -489,6 +489,10 @@ struct msmfb_mdp_pp {
 	} data;
 };
 
+enum {
+	metadata_op_frame_rate,
+};
+
 #define MDP_MAX_FENCE_FD	10
 #define MDP_BUF_SYNC_FLAG_WAIT	1
 
@@ -497,6 +501,14 @@ struct mdp_buf_sync {
 	uint32_t acq_fen_fd_cnt;
 	int *acq_fen_fd;
 	int *rel_fen_fd;
+};
+
+struct msmfb_metadata {
+	uint32_t op;
+	uint32_t flags;
+	union {
+		uint32_t panel_frame_rate;
+	} data;
 };
 
 struct mdp_buf_fence {
