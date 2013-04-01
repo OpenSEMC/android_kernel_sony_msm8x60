@@ -1388,7 +1388,7 @@ int mdp_ppp_pipe_wait(void)
 #define MAX_VSYNC_GAP		4
 #define DEFAULT_FRAME_RATE	60
 
-static u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
+u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 {
 	u32 frame_rate = 0, pixel_rate = 0, total_pixel;
 	struct msm_panel_info *panel_info = &mfd->panel_info;
@@ -2896,13 +2896,12 @@ static int mdp_probe(struct platform_device *pdev)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 
+	frame_rate = mdp_get_panel_framerate(mfd);
+  	if (frame_rate) {
+    		mfd->panel_info.frame_interval = 1000 / frame_rate;
+    		mfd->cpu_pm_hdl = add_event_timer(NULL, (void *)mfd);
+  	}
 	mdp_clk_ctrl(0);
-
-frame_rate = mdp_get_panel_framerate(mfd);
-  if (frame_rate) {
-    mfd->panel_info.frame_interval = 1000 / frame_rate;
-    mfd->cpu_pm_hdl = add_event_timer(NULL, (void *)mfd);
-  }
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	if (!mdp_bus_scale_handle && mdp_pdata &&
