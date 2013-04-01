@@ -243,9 +243,6 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 
 	mdp4_mixer_stage_commit(mixer);
 
-	/* start timing generator & mmu if they are not started yet */
-	mdp4_overlay_lcdc_start();
-
 	pipe = vctrl->base_pipe;
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (pipe->ov_blt_addr) {
@@ -680,6 +677,7 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	mdp_histogram_ctrl_all(TRUE);
+	mdp4_overlay_lcdc_start();
 
 	if (!vctrl->sysfs_created) {
 		ret = sysfs_create_group(&vctrl->dev->kobj,
@@ -698,6 +696,20 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	return ret;
 }
 
+/* timing generator off */
+static void mdp4_lcdc_tg_off(struct vsycn_ctrl *vctrl)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&vctrl->spin_lock, flags);
+	INIT_COMPLETION(vctrl->vsync_comp);
+	vctrl->wait_vsync_cnt++;
+	MDP_OUTP(MDP_BASE + LCDC_BASE, 0); /* turn off timing generator */
+	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
+
+	mdp4_lcdc_wait4vsync(0);
+}
+
 int mdp4_lcdc_off(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -713,10 +725,9 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	vctrl = &vsync_ctrl_db[cndx];
 	pipe = vctrl->base_pipe;
 
-	atomic_set(&vctrl->suspend, 1);
-	atomic_set(&vctrl->vsync_resume, 0);
+	mdp4_lcdc_wait4vsync(cndx);
 
-	msleep(20);	/* >= 17 ms */
+	atomic_set(&vctrl->vsync_resume, 0);
 
 	complete_all(&vctrl->vsync_comp);
 
@@ -728,8 +739,6 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 		if (need_wait)
 			mdp4_lcdc_wait4ov(0);
 	}
-
-	MDP_OUTP(MDP_BASE + LCDC_BASE, 0);
 
 	lcdc_enabled = 0;
 
@@ -765,6 +774,10 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 				vctrl->base_pipe->pipe_ndx, 1);
 		}
 	}
+
+	mdp4_lcdc_tg_off(vctrl);
+
+	atomic_set(&vctrl->suspend, 1);
 
 	/* MDP clock disable */
 	mdp_clk_ctrl(0);
