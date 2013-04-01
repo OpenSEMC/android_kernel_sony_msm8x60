@@ -620,7 +620,6 @@ int mdp4_dtv_off(struct platform_device *pdev)
 
 	pipe = vctrl->base_pipe;
 	if (pipe != NULL) {
-		mdp4_dtv_stop(mfd);
 		/* sanity check, free pipes besides base layer */
 		mdp4_overlay_unset_mixer(pipe->mixer_num);
 		if (hdmi_prim_display && mfd->ref_cnt == 0) {
@@ -635,14 +634,11 @@ int mdp4_dtv_off(struct platform_device *pdev)
 			mdp4_overlay_pipe_free(pipe);
 			vctrl->base_pipe = NULL;
 		}
+		mdp4_dtv_stop(mfd);
+		//mdp4_dtv_wait4vsync(cndx);
 	}
 
 	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
-
-        if (vctrl->vsync_irq_enabled) {
-            vctrl->vsync_irq_enabled = 0;
-            vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
-        }
 
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
@@ -651,7 +647,7 @@ int mdp4_dtv_off(struct platform_device *pdev)
 		 * pipe's iommu will be freed at next overlay play
 		 * and iommu_drop statistic will be increased by one
 		 */
-		vp->update_cnt = 0;     /* empty queue */
+		mdp4_dtv_pipe_clean(vp);
 	}
 
 	ret = panel_next_off(pdev);
@@ -662,6 +658,21 @@ int mdp4_dtv_off(struct platform_device *pdev)
 
 	pr_info("%s:\n", __func__);
 	return ret;
+}
+
+static void mdp4_dtv_pipe_clean(struct vsync_update *vp)
+{
+  struct mdp4_overlay_pipe *pipe;
+  int i;
+
+  pipe = vp->plist;
+  for (i = 0; i < OVERLAY_PIPE_MAX; i++, pipe++) {
+    if (pipe->pipe_used) {
+      mdp4_overlay_iommu_pipe_free(pipe->pipe_ndx, 0);
+      pipe->pipe_used = 0; /* clear */
+    }
+  }
+  vp->update_cnt = 0;     /* empty queue */
 }
 
 static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe)

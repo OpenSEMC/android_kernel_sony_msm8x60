@@ -172,11 +172,6 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 	pipe = vctrl->base_pipe;
 	mixer = pipe->mixer_num;
 
-	if (vp->update_cnt == 0) {
-		mutex_unlock(&vctrl->update_lock);
-		return 0;
-	}
-
 	vctrl->update_ndx++;
 	vctrl->update_ndx &= 0x01;
 	vp->update_cnt = 0;     /* reset */
@@ -703,11 +698,6 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 
 	mdp_histogram_ctrl_all(FALSE);
 
-        if (vctrl->vsync_irq_enabled) {
-            vctrl->vsync_irq_enabled = 0;
-            vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
-        }
-
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
 	if (vp->update_cnt) {
@@ -715,7 +705,7 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 		 * pipe's iommu will be freed at next overlay play
 		 * and iommu_drop statistic will be increased by one
 		 */
-		vp->update_cnt = 0;     /* empty queue */
+		mdp4_lcdc_pipe_clean(vp);
 	}
 
 	if (pipe) {
@@ -744,6 +734,21 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	return ret;
+}
+
+static void mdp4_lcdc_pipe_clean(struct vsync_update *vp)
+{
+  struct mdp4_overlay_pipe *pipe;
+  int i;
+
+  pipe = vp->plist;
+  for (i = 0; i < OVERLAY_PIPE_MAX; i++, pipe++) {
+    if (pipe->pipe_used) {
+      mdp4_overlay_iommu_pipe_free(pipe->pipe_ndx, 0);
+      pipe->pipe_used = 0; /* clear */
+    }
+  }
+  vp->update_cnt = 0;     /* empty queue */
 }
 
 static void mdp4_lcdc_blt_ov_update(struct mdp4_overlay_pipe *pipe)
