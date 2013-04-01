@@ -2407,24 +2407,6 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 
 	pipe->flags = req->flags;
 
-#ifdef CONFIG_ARCH_MSM8X60
-       /* If we're composing with MDP and we suddenly need a really outrageous clockrate,
-        * just fail so that userspace switches to the GPU. If we don't do this, MDP will
-        * switch to BLT mode, but it locks up and we never get any interrupts. Only seems to
-        * happen on 8660 devices, so ifdeffed this appropriately. */
-       if (pipe->flags & MDP_BACKEND_COMPOSITION && req->id == MSMFB_NEW_REQUEST) {
-               printk("PL: pipe problem workaround triggered\n");
-               mdp4_calc_pipe_mdp_clk(mfd, pipe);
-               if (pipe->req_clk > mdp_max_clk) {
-                       pr_err("%s: high clock rate requested while composing, switch to GPU! req=%d max=%d",
-                                                       __func__, pipe->req_clk, mdp_max_clk);
-                       mdp4_overlay_pipe_free(pipe);
-                       return -EINVAL;
-               }
-       }
-#endif
-
-
 	*ppipe = pipe;
 
 	return 0;
@@ -2714,6 +2696,13 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 			worst_mdp_bw = pipe->req_bw;
 
 		if (mfd->mdp_rev == MDP_REV_41) {
+
+		  if ((pipe->flags & MDP_BACKEND_COMPOSITION) && perf_req->use_ov0_blt) {
+		    pr_err("%s: BLT requested while composing, switch to GPU! req=%d max=%d",
+			__func__, pipe->req_clk, mdp_max_clk);
+		    return -EINVAL;
+		  }
+
 			/*
 			 * writeback (blt) mode to provide work around
 			 * for dsi cmd mode interface hardware bug.
@@ -3044,11 +3033,11 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 								__func__);
 	}
 
-	mdp4_overlay_mdp_pipe_req(pipe, mfd);
+	ret = mdp4_overlay_mdp_pipe_req(pipe, mfd);
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 
-	return 0;
+	return ret;
 }
 
 int mdp4_overlay_unset_mixer(int mixer)
