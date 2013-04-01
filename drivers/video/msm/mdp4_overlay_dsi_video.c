@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -237,9 +237,6 @@ int mdp4_dsi_video_pipe_commit(int cndx, int wait)
 	}
 
 	mdp4_mixer_stage_commit(mixer);
-
-	/* start timing generator & mmu if they are not started yet */
-	mdp4_overlay_dsi_video_start();
 
 	mdp4_video_vsync_irq_ctrl(cndx, 1);
 
@@ -579,10 +576,12 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 		pipe = vctrl->base_pipe;
 	}
 
+	atomic_set(&vctrl->suspend, 0);
+
 	if (!(mfd->cont_splash_done)) {
 		mfd->cont_splash_done = 1;
-		mdp4_dsi_video_wait4dmap_done(0);
 		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+		mdp4_dsi_video_wait4vsync(0);
 		mipi_dsi_controller_cfg(0);
 		/* Clks are enabled in probe.
 		   Disabling clocks now */
@@ -610,8 +609,6 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	pipe->dst_w = fbi->var.xres;
 
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
-
-	atomic_set(&vctrl->suspend, 0);
 
 	mdp4_overlay_dmap_xy(pipe);	/* dma_p */
 	mdp4_overlay_dmap_cfg(mfd, 1);
