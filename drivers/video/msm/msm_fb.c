@@ -1388,27 +1388,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	var->yres_virtual = panel_info->yres * mfd->fb_page +
 		((PAGE_SIZE - remainder)/fix->line_length) * mfd->fb_page;
 	var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
-	if (mfd->dest == DISPLAY_LCD) {
-		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
-			var->reserved[3] = panel_info->lcd.refx100 / (100 * 2);
-		else
-			var->reserved[3] = panel_info->lcd.refx100 / 100;
-	} else {
-		if (panel_info->type == MIPI_VIDEO_PANEL) {
-			var->reserved[3] = panel_info->mipi.frame_rate;
-		} else {
-			var->reserved[3] = panel_info->clk_rate /
-				((panel_info->lcdc.h_back_porch +
-				  panel_info->lcdc.h_front_porch +
-				  panel_info->lcdc.h_pulse_width +
-				  panel_info->xres) *
-				 (panel_info->lcdc.v_back_porch +
-				  panel_info->lcdc.v_front_porch +
-				  panel_info->lcdc.v_pulse_width +
-				  panel_info->yres));
-		}
-	}
-	pr_debug("reserved[3] %u\n", var->reserved[3]);
+	var->reserved[3] = mdp_get_panel_framerate(mfd);
 
 		/*
 		 * id field for fb app
@@ -1991,7 +1971,7 @@ static int msm_fb_pan_display_sub(struct fb_var_screeninfo *var,
 	}
 
 	mdp_set_dma_pan_info(info, dirtyPtr,
-			     (var->activate == FB_ACTIVATE_VBL));
+			     (var->activate & FB_ACTIVATE_VBL));
 	/* async call */
 
 	mdp_dma_pan_update(info);
@@ -3196,6 +3176,17 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 		return ret;
 	}
 
+	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
+	  mdp_set_dma_pan_info(info, NULL, TRUE);
+	  if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
+	    pr_err("%s: can't turn on display!\n", __func__);
+	    return -EINVAL;
+	  }
+	}
+
+if (!mfd->panel_power_on) /* suspended */
+return -EPERM;
+
 	complete(&mfd->msmfb_update_notify);
 	mutex_lock(&msm_fb_notify_update_sem);
 	if (mfd->msmfb_no_update_notify_timer.function)
@@ -3204,14 +3195,6 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 	mfd->msmfb_no_update_notify_timer.expires = jiffies + (2 * HZ);
 	add_timer(&mfd->msmfb_no_update_notify_timer);
 	mutex_unlock(&msm_fb_notify_update_sem);
-
-	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
-		mdp_set_dma_pan_info(info, NULL, TRUE);
-		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
-			pr_err("%s: can't turn on display!\n", __func__);
-			return -EINVAL;
-		}
-	}
 
 	ret = mdp4_overlay_play(info, &req);
 
@@ -3720,6 +3703,24 @@ static int msmfb_display_commit(struct fb_info *info,
 	}
 	return ret;
 }
+
+static int msmfb_get_metadata(struct msm_fb_data_type *mfd,
+        struct msmfb_metadata *metadata_ptr)
+{
+  int ret = 0;
+  switch (metadata_ptr->op) {
+  case metadata_op_frame_rate:
+    metadata_ptr->data.panel_frame_rate =
+      mdp_get_panel_framerate(mfd);
+    break;
+  default:
+    pr_warn("Unsupported request to MDP META IOCTL.\n");
+    ret = -EINVAL;
+    break;
+  }
+  return ret;
+}
+
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
@@ -3738,6 +3739,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_page_protection fb_page_protection;
 	struct msmfb_mdp_pp mdp_pp;
 	struct mdp_buf_sync buf_sync;
+	struct msmfb_metadata mdp_metadata;
 	int ret = 0;
 	msm_fb_pan_idle(mfd);
 
@@ -4037,6 +4039,18 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 	case MSMFB_DISPLAY_COMMIT:
 		ret = msmfb_display_commit(info, argp);
+		break;
+
+	case MSMFB_METADATA_GET:
+		ret = copy_from_user(&mdp_metadata, argp, sizeof(mdp_metadata));
+		if (ret)
+			return ret;
+
+		ret = msmfb_get_metadata(mfd, &mdp_metadata);
+
+		if (!ret)
+			ret = copy_to_user(argp, &mdp_metadata, sizeof(mdp_metadata));
+
 		break;
 
 	default:

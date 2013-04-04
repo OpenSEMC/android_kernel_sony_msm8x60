@@ -287,6 +287,8 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 							&reg_map_array);
 
 	context = idr_find(&device->context_idr, context_id);
+	if (context == NULL)
+		return;
 	adreno_ctx = context->devctxt;
 
 	reg_map_desc = reg_map_array;
@@ -444,6 +446,8 @@ static void adreno_gpummu_setstate(struct kgsl_device *device,
 	 */
 	if (!kgsl_cff_dump_enable && adreno_dev->drawctxt_active) {
 		context = idr_find(&device->context_idr, context_id);
+		if (context == NULL)
+			return;
 		adreno_ctx = context->devctxt;
 
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {

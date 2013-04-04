@@ -924,4 +924,6 @@ static inline void mdp_vid_quant_set(void)
 #endif
 int mdp_preset_lut_update_lcdc(struct fb_cmap *cmap, uint32_t *internal_lut);
 #endif
+
+u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd);
 #endif /* MDP_H */
