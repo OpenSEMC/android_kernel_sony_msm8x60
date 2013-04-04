@@ -77,7 +77,7 @@ int mdp4_overlay_writeback_on(struct platform_device *pdev)
 		fbi->var.yoffset * fbi->fix.line_length;
 
 	/* MDP cmd block enable */
-	mdp_clk_ctrl(1);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	if (writeback_pipe == NULL) {
 		pipe = mdp4_overlay_pipe_alloc(OVERLAY_TYPE_BF, MDP4_MIXER2);
@@ -115,7 +115,7 @@ int mdp4_overlay_writeback_on(struct platform_device *pdev)
 	MDP_OUTP(MDP_BASE + MDP4_OVERLAYPROC1_BASE + 0x5008,
 		(0x0 & 0xFFF));         /* 12-bit R */
 
-	mdp_clk_ctrl(0);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	return ret;
 }
 
@@ -132,10 +132,10 @@ int mdp4_overlay_writeback_off(struct platform_device *pdev)
 		writeback_pipe = NULL;
 	}
 	ret = panel_next_off(pdev);
-	mdp_clk_ctrl(1);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	/* MDP_LAYERMIXER_WB_MUX_SEL to restore to default cfg*/
 	outpdw(MDP_BASE + 0x100F4, 0x0);
-	mdp_clk_ctrl(0);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	return ret;
 }
 int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
@@ -162,7 +162,7 @@ int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
 		fbi->var.yoffset * fbi->fix.line_length;
 
 	/* MDP cmd block enable */
-	mdp_clk_ctrl(1);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	pipe->src_height = fbi->var.yres;
 	pipe->src_width = fbi->var.xres;
@@ -188,7 +188,7 @@ int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
 	mdp4_overlayproc_cfg(pipe);
 	mdp4_mixer_stage_commit(pipe->mixer_num);
 	/* MDP cmd block disable */
-	mdp_clk_ctrl(0);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	wmb();
 	return 0;
