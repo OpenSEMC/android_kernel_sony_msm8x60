@@ -519,6 +519,8 @@ struct mdp_buf_fence {
 	int rel_fen_fd[MDP_MAX_FENCE_FD];
 };
 
+#define MDP_DISPLAY_COMMIT_OVERLAY 0x00000001
+
 struct mdp_display_commit {
 	uint32_t flags;
 	uint32_t wait_for_finish;
