@@ -1021,6 +1021,10 @@ void mdp4_dmap_done_dsi_video(int cndx)
 	}
 
 	complete_all(&vctrl->dmap_comp);
+
+	if (mdp_rev <= MDP_REV_41)
+		mdp4_mixer_blend_cfg(MDP4_MIXER0);
+
 	mdp4_overlay_dma_commit(cndx);
 	spin_unlock(&vctrl->spin_lock);
 }
@@ -1044,6 +1048,9 @@ void mdp4_overlay0_done_dsi_video(int cndx)
 		spin_unlock(&vctrl->spin_lock);
 		return;
 	}
+
+	if (mdp_rev <= MDP_REV_41)
+		mdp4_mixer_blend_cfg(MDP4_MIXER0);
 
 	mdp4_dsi_video_blt_dmap_update(pipe);
 	pipe->dmap_cnt++;
