@@ -3790,6 +3790,17 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("sc0_mclk",		sc0_m_clk, ""),
 	CLK_LOOKUP("sc1_mclk",		sc1_m_clk, ""),
 	CLK_LOOKUP("l2_mclk",		l2_m_clk,  ""),
+
+	CLK_LOOKUP("rot_iommu_clk",        rot_axi_clk.c,        "msm_rotator.0"),
+        CLK_LOOKUP("mdp_iommu_clk", mdp_axi_clk.c,        "msm_rotator.0"),
+        CLK_LOOKUP("vcodec_iommu0_clk", vcodec_axi_a_clk.c, "msm_rotator.0"),
+        CLK_LOOKUP("vcodec_iommu1_clk", vcodec_axi_b_clk.c, "msm_rotator.0"),
+        CLK_LOOKUP("smmu_iface_clk", smmu_p_clk.c,        "msm_rotator.0"),
+        CLK_LOOKUP("rot_iommu_clk",        rot_axi_clk.c,        "mdp.0"),
+        CLK_LOOKUP("mdp_iommu_clk", mdp_axi_clk.c,        "mdp.0"),
+        CLK_LOOKUP("vcodec_iommu0_clk", vcodec_axi_a_clk.c, "mdp.0"),
+        CLK_LOOKUP("vcodec_iommu1_clk", vcodec_axi_b_clk.c, "mdp.0"),
+        CLK_LOOKUP("smmu_iface_clk", smmu_p_clk.c,        "mdp.0"),
 };
 
 /*
