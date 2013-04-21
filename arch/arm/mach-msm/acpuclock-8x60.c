@@ -1052,7 +1052,7 @@ static __init struct clkctl_acpu_speed *select_freq_plan(void)
 	if (speed_bin == 0xF)
 		speed_bin = (pte_efuse >> 4) & 0xF;
 
-	pvs = (pte_efuse >> 10) & 0x7;
+	pvs = (pte_efuse >> 10) & 0x7; 
 	if (pvs == 0x7)
 		pvs = (pte_efuse >> 13) & 0x7;
 
@@ -1084,19 +1084,19 @@ static __init struct clkctl_acpu_speed *select_freq_plan(void)
 		switch (pvs) {
 		case 0x0:
 		case 0x7:
-			acpu_freq_tbl = acpu_freq_tbl_1512mhz_slow;
+			acpu_freq_tbl = acpu_freq_tbl_1674mhz_slow;
 			pr_info("ACPU PVS: Slow\n");
 			break;
 		case 0x1:
-			acpu_freq_tbl = acpu_freq_tbl_1512mhz_nom;
+			acpu_freq_tbl = acpu_freq_tbl_1674mhz_nom;
 			pr_info("ACPU PVS: Nominal\n");
 			break;
 		case 0x3:
-			acpu_freq_tbl = acpu_freq_tbl_1512mhz_fast;
+			acpu_freq_tbl = acpu_freq_tbl_1674mhz_fast;
 			pr_info("ACPU PVS: Fast\n");
 			break;
 		default:
-			acpu_freq_tbl = acpu_freq_tbl_1512mhz_slow;
+			acpu_freq_tbl = acpu_freq_tbl_1674mhz_slow;
 			pr_warn("ACPU PVS: Unknown. Defaulting to slow.\n");
 			break;
 		}
@@ -1137,9 +1137,11 @@ static int __init acpuclk_8x60_init(struct acpuclk_soc_data *soc_data)
 	regulator_init();
 	bus_init();
 
-	/* Improve boot time by ramping up CPUs immediately. */
+	/* Improve boot time by ramping up CPUs immediately.
+	 * NOTE: Boot frequency limited to S standard (1512000)
+	 */
 	for_each_online_cpu(cpu)
-		acpuclk_8x60_set_rate(cpu, max_freq->acpuclk_khz, SETRATE_INIT);
+		acpuclk_8x60_set_rate(cpu, 1512000, SETRATE_INIT);
 
 	acpuclk_register(&acpuclk_8x60_data);
 	cpufreq_table_init();
