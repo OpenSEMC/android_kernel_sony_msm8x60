@@ -186,4 +186,18 @@ static inline int msm_soc_version_supports_iommu(void)
 	}
 	return 1;
 }
+
+static inline int msm_soc_version_supports_iommu_v1(void)
+{
+	if (cpu_is_msm8960() &&
+	    SOCINFO_VERSION_MAJOR(socinfo_get_version()) < 2)
+		return 0;
+
+	if (cpu_is_msm8x60() &&
+	    (SOCINFO_VERSION_MAJOR(socinfo_get_version()) != 2 ||
+	    SOCINFO_VERSION_MINOR(socinfo_get_version()) < 1))	{
+		return 0;
+	}
+	return 1;
+}
 #endif
