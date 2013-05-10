@@ -2263,6 +2263,9 @@ static struct clk_freq_tbl clk_tbl_gfx2d[] = {
 	F_GFX2D(177778000, pll2, 2,  9),
 	F_GFX2D(200000000, pll2, 1,  4),
 	F_GFX2D(228571000, pll2, 2,  7),
+#ifdef CONFIG_NOZOMI_GPU_OVERCLOCKABLE
+	F_GFX2D(266667000, pll2, 1,  3),
+#endif
 	F_END
 };
 
@@ -2284,6 +2287,31 @@ static struct bank_masks bmnd_info_gfx2d0 = {
 	},
 };
 
+#ifdef CONFIG_NOZOMI_GPU_OVERCLOCKABLE
+static struct rcg_clk gfx2d0_clk = {
+  .b = {
+    .ctl_reg = GFX2D0_CC_REG,
+    .en_mask = BIT(0),
+    .reset_reg = SW_RESET_CORE_REG,
+    .reset_mask = BIT(14),
+    .halt_reg = DBG_BUS_VEC_A_REG,
+    .halt_bit = 9,
+  },
+  .ns_reg = GFX2D0_NS_REG,
+  .root_en_mask = BIT(2),
+  .set_rate = set_rate_mnd_banked,
+  .freq_tbl = clk_tbl_gfx2d,
+  .bank_info = &bmnd_info_gfx2d0,
+  .current_freq = &rcg_dummy_freq,
+  .c = {
+    .dbg_name = "gfx2d0_clk",
+    .ops = &clk_ops_rcg_8x60,
+    VDD_DIG_FMAX_MAP3(LOW,  100000000, NOMINAL, 200000000,
+          HIGH, 266667000),
+    CLK_INIT(gfx2d0_clk.c),
+  },
+};
+#else
 static struct rcg_clk gfx2d0_clk = {
 	.b = {
 		.ctl_reg = GFX2D0_CC_REG,
@@ -2307,6 +2335,7 @@ static struct rcg_clk gfx2d0_clk = {
 		CLK_INIT(gfx2d0_clk.c),
 	},
 };
+#endif
 
 static struct bank_masks bmnd_info_gfx2d1 = {
 	.bank_sel_mask =		BIT(11),
@@ -2326,6 +2355,31 @@ static struct bank_masks bmnd_info_gfx2d1 = {
 	},
 };
 
+#ifdef CONFIG_NOZOMI_GPU_OVERCLOCKABLE
+static struct rcg_clk gfx2d1_clk = {
+  .b = {
+    .ctl_reg = GFX2D1_CC_REG,
+    .en_mask = BIT(0),
+    .reset_reg = SW_RESET_CORE_REG,
+    .reset_mask = BIT(13),
+    .halt_reg = DBG_BUS_VEC_A_REG,
+    .halt_bit = 14,
+  },
+  .ns_reg = GFX2D1_NS_REG,
+  .root_en_mask = BIT(2),
+  .set_rate = set_rate_mnd_banked,
+  .freq_tbl = clk_tbl_gfx2d,
+  .bank_info = &bmnd_info_gfx2d1,
+  .current_freq = &rcg_dummy_freq,
+  .c = {
+    .dbg_name = "gfx2d1_clk",	
+    .ops = &clk_ops_rcg_8x60,
+    VDD_DIG_FMAX_MAP3(LOW,  100000000, NOMINAL, 200000000,
+          HIGH, 266667000),
+    CLK_INIT(gfx2d1_clk.c),
+  },
+};
+#else
 static struct rcg_clk gfx2d1_clk = {
 	.b = {
 		.ctl_reg = GFX2D1_CC_REG,
@@ -2349,6 +2403,7 @@ static struct rcg_clk gfx2d1_clk = {
 		CLK_INIT(gfx2d1_clk.c),
 	},
 };
+#endif
 
 #define F_GFX3D(f, s, m, n) \
 	{ \
@@ -2374,6 +2429,9 @@ static struct clk_freq_tbl clk_tbl_gfx3d[] = {
 	F_GFX3D(200000000, pll2, 1,  4),
 	F_GFX3D(228571000, pll2, 2,  7),
 	F_GFX3D(266667000, pll2, 1,  3),
+#ifdef CONFIG_NOZOMI_GPU_SCALING
+	F_GFX3D(300000000, pll2, 3,  8),
+#endif
 	F_GFX3D(320000000, pll2, 2,  5),
 	F_END
 };
