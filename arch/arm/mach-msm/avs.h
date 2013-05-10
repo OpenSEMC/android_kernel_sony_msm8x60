@@ -15,7 +15,14 @@
 #define AVS_H
 
 #define VOLTAGE_MIN  1000 /* mV */
+
+/* Raise max allowed voltage on CPU OC */
+#ifdef CONFIG_NOZOMI_CPU_OVERCLOCKABLE
+#define VOLTAGE_MAX  1350
+#else
 #define VOLTAGE_MAX  1250
+#endif
+
 #define VOLTAGE_STEP 25
 
 int __init avs_init(int (*set_vdd)(int), u32 freq_cnt, u32 freq_idx);
