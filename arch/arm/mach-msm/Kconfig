@@ -2382,19 +2382,4 @@ config CPU_VOLTAGE_TABLE
 	bool "Enable CPU Voltage Table via sysfs for adjustements"	
 	default n
 
-config NOZOMI_CPU_OVERCLOCKABLE
-	bool "Enable CPU overclocking for the Sony Xperia S"
-	depends on ARCH_MSM8X60
-	default n
-
-config NOZOMI_GPU_OVERCLOCKABLE
-	bool "Enable GPU overclocking for the Sony Xperia S"
-	depends on ARCH_MSM8X60
-	default n
-
-config NOZOMI_GPU_SCALING
-	bool "Enable GPU 2D scaling for the Sony Xperia S"
-	depends on ARCH_MSM8X60
-	default n
-
 endif
