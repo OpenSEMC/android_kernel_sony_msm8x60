@@ -1579,7 +1579,7 @@ static int msm_rotator_start(unsigned long arg,
 			msm_rotator_dev->img_info[first_free_index];
 		*(msm_rotator_dev->img_info[first_free_index]) = info;
 		msm_rotator_dev->fd_info[first_free_index] = fd_info;
-		s = first_free_idx;
+		s = first_free_index;
 	} else if (s == MAX_SESSIONS) {
 		dev_dbg(msm_rotator_dev->device, "%s: all sessions in use\n",
 			__func__);
@@ -1594,7 +1594,7 @@ static int msm_rotator_start(unsigned long arg,
 		char timeline_name[MAX_TIMELINE_NAME_LEN];
 		if (sync_info->timeline == NULL) {
 			snprintf(timeline_name, sizeof(timeline_name),
-				"msm_rot_%d", first_free_idx);
+				"msm_rot_%d", first_free_index);
 			sync_info->timeline =
 				sw_sync_timeline_create(timeline_name);
 			if (sync_info->timeline == NULL)
