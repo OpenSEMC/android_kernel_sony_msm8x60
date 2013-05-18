@@ -439,9 +439,9 @@ static int  msm_rotator_buf_sync(unsigned long arg)
 		return -EFAULT;
 
 	for (s = 0; s < MAX_SESSIONS; s++)
-		if ((msm_rotator_dev->rot_session[s] != NULL) &&
+		if ((msm_rotator_dev->fd_info[s] != NULL) &&
 			(buf_sync.session_id ==
-			(unsigned int)msm_rotator_dev->rot_session[s]
+			(unsigned int)msm_rotator_dev->fd_info[s]
 			))
 			break;
 
