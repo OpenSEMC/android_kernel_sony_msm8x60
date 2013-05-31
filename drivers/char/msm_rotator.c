@@ -706,6 +706,114 @@ static int msm_rotator_get_plane_sizes(uint32_t format,	uint32_t w, uint32_t h,
 	return 0;
 }
 
+/* Checking invalid destination image size on FAST YUV for YUV420PP(NV12) with
+ * HW issue  for rotation 90 + U/D filp + with/without flip operation
+ * (rotation 90 + U/D + L/R flip is rotation 270 degree option) and pix_rot
+ * block issue with tile line size is 4.
+ *
+ * Rotator structure is:
+ * if Fetch input image: W x H,
+ * Downscale: W` x H` = W/ScaleHor(2, 4 or 8) x H/ScaleVert(2, 4 or 8)
+ * Rotated output : W`` x H`` = (W` x H`) or (H` x W`) depends on "Rotation 90
+ * degree option"
+ *
+ * Pack: W`` x H``
+ *
+ * Rotator source ROI image width restriction is applied to W x H (case a,
+ * image resolution before downscaling)
+ *
+ * Packer source Image width/ height restriction are applied to  W`` x H``
+ * (case c, image resolution after rotation)
+ *
+ * Supertile (64 x 8) and YUV (2 x 2)  alignment restriction should be
+ * applied to the W x H (case a). Input image should be at least (2 x 2).
+ *
+ * "Support If packer source image height <= 256, multiple of 8", this
+ * restriction should be applied to the rotated image (W`` x H``)
+ */
+
+uint32_t fast_yuv_invalid_size_checker(unsigned char rot_mode,
+						uint32_t src_width,
+						uint32_t dst_width,
+						uint32_t src_height,
+						uint32_t dst_height,
+						uint32_t dstp0_ystride,
+						uint32_t is_planar420)
+{
+	uint32_t hw_limit;
+
+	hw_limit  = is_planar420 ? 512 : 256;
+
+	/* checking image constaints for missing EOT event from pix_rot block */
+	if ((src_width > hw_limit) && ((src_width % (hw_limit / 2)) == 8))
+		return -EINVAL;
+
+	if (rot_mode & MDP_ROT_90) {
+
+		if ((src_height % 128) == 8)
+			return -EINVAL;
+
+		/* if rotation 90 degree on fast yuv
+		 * rotator image input width has to be multiple of 8
+		 * rotator image input height has to be multiple of 8
+		 */
+		if (((dst_width % 8) != 0) || ((dst_height % 8) != 0))
+			return -EINVAL;
+
+		if ((rot_mode & MDP_FLIP_UD) ||
+			(rot_mode & (MDP_FLIP_UD | MDP_FLIP_LR))) {
+
+			/* image constraint checking for wrong address
+			 * generation HW issue for Y plane checking
+			 */
+			if (((dst_height % 64) != 0) &&
+				((dst_height / 64) >= 4)) {
+
+				/* compare golden logic for second
+				 * tile base address generation in row
+				 * with actual HW implementation
+				*/
+				if (BASE_ADDR(dst_height, dstp0_ystride) !=
+					HW_BASE_ADDR(dst_height, dstp0_ystride))
+						return -EINVAL;
+			}
+
+			if (is_planar420) {
+				dst_width = dst_width / 2;
+				dstp0_ystride = dstp0_ystride / 2;
+			}
+
+			dst_height = dst_height / 2;
+
+			/* image constraint checking for wrong
+			 * address generation HW issue. for
+			 * U/V (P) or UV (PP) plane checking
+			 */
+			if (((dst_height % 64) != 0) && ((dst_height / 64) >=
+				(hw_limit / 128))) {
+
+				/* compare golden logic for
+				 * second tile base address
+				 * generation in row with
+				 * actual HW implementation
+				*/
+				if (BASE_ADDR(dst_height, dstp0_ystride) !=
+					HW_BASE_ADDR(dst_height, dstp0_ystride))
+						return -EINVAL;
+			}
+		}
+	} else {
+		/* if NOT applying rotation 90 degree on fast yuv,
+		 * rotator image input width has to be multiple of 8
+		 * rotator image input height has to be multiple of 8
+		*/
+		if (((dst_width % 8) != 0) || ((dst_height % 8) != 0))
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int msm_rotator_ycxcx_h2v1(struct msm_rotator_img_info *info,
 				  unsigned int in_paddr,
 				  unsigned int out_paddr,
@@ -1798,6 +1906,49 @@ static int msm_rotator_start(unsigned long arg,
 	    checkoffset(info.dst_y, dst_h, info.dst.height)) {
 		pr_err("%s: Invalid src or dst rect\n", __func__);
 		return -ERANGE;
+	}
+
+	switch (info.src.format) {
+	case MDP_Y_CB_CR_H2V2:
+	case MDP_Y_CR_CB_H2V2:
+	/* To support Movie Studio, the following line needs to be removed */
+	/* case MDP_Y_CR_CB_GH2V2: */
+		is_planar420 = 1;
+	case MDP_Y_CBCR_H2V2:
+	case MDP_Y_CRCB_H2V2:
+	case MDP_Y_CRCB_H2V2_TILE:
+	case MDP_Y_CBCR_H2V2_TILE:
+		if (rotator_hw_revision >= ROTATOR_REVISION_V2) {
+
+			if (!info.downscale_ratio) {
+				fast_yuv_en = !fast_yuv_invalid_size_checker(
+							     info.rotations,
+							     info.src.width,
+							     info.src.height,
+							     dst_w,
+							     dst_h,
+							     dst_w,
+							     is_planar420);
+			} else if ((info.src.width == 1920) &&
+				   (info.downscale_ratio == 1) &&
+				   (!info.rotations)) {
+				/*
+				 * Also allow fast_yuv when down scaling
+				 * 1080p to 720p without rotations
+				 */
+				fast_yuv_en = !fast_yuv_invalid_size_checker(
+							     info.rotations,
+							     info.src.width,
+							     info.dst.width,
+							     info.src.height,
+							     info.dst.height,
+							     info.dst.width,
+							     is_planar420);
+			}
+		}
+	break;
+	default:
+		fast_yuv_en = 0;
 	}
 
 	switch (info.src.format) {
