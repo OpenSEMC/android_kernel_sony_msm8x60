@@ -13,16 +13,6 @@ endif
 nf_nat-y		:= nf_nat_core.o nf_nat_helper.o nf_nat_proto_unknown.o nf_nat_proto_common.o nf_nat_proto_tcp.o nf_nat_proto_udp.o nf_nat_proto_icmp.o
 iptable_nat-y	:= nf_nat_rule.o nf_nat_standalone.o
 
-CFLAGS_nf_nat_standalone.o = -Wno-address
-CFLAGS_nf_nat_core.o = -Wno-address
-CFLAGS_nf_nat_amanda.o = -Wno-address
-CFLAGS_nf_nat_ftp.o = -Wno-address
-CFLAGS_nf_nat_irc.o = -Wno-address
-CFLAGS_nf_nat_pptp.o = -Wno-address
-CFLAGS_nf_nat_h323.o = -Wno-address
-CFLAGS_nf_nat_sip.o = -Wno-address
-CFLAGS_nf_nat_tftp.o = -Wno-address
-
 # connection tracking
 obj-$(CONFIG_NF_CONNTRACK_IPV4) += nf_conntrack_ipv4.o
 
@@ -59,12 +49,11 @@ obj-$(CONFIG_IP_NF_SECURITY) += iptable_security.o
 
 # matches
 obj-$(CONFIG_IP_NF_MATCH_AH) += ipt_ah.o
-obj-$(CONFIG_IP_NF_MATCH_ECN) += ipt_ecn.o
+obj-$(CONFIG_IP_NF_MATCH_RPFILTER) += ipt_rpfilter.o
 
 # targets
 obj-$(CONFIG_IP_NF_TARGET_CLUSTERIP) += ipt_CLUSTERIP.o
 obj-$(CONFIG_IP_NF_TARGET_ECN) += ipt_ECN.o
-obj-$(CONFIG_IP_NF_TARGET_LOG) += ipt_LOG.o
 obj-$(CONFIG_IP_NF_TARGET_MASQUERADE) += ipt_MASQUERADE.o
 obj-$(CONFIG_IP_NF_TARGET_NETMAP) += ipt_NETMAP.o
 obj-$(CONFIG_IP_NF_TARGET_REDIRECT) += ipt_REDIRECT.o

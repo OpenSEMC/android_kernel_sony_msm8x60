@@ -1,7 +1,7 @@
 /*
  * TSIF Driver
  *
- * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  * Copyright (c) 2010-2012, Sony Ericsson Mobile Communications AB
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,8 +32,8 @@
 #include <linux/tsif_api.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>          /* kfree, kzalloc */
+#include <linux/gpio.h>
 
-#include <mach/gpio.h>
 #include <mach/dma.h>
 #include <mach/msm_tsif.h>
 
@@ -683,7 +683,7 @@ static void tsif_dma_flush(struct msm_tsif_device *tsif_device)
 		tsif_device->state = tsif_state_flushing;
 		while (tsif_device->xfer[0].busy ||
 		       tsif_device->xfer[1].busy) {
-			msm_dmov_flush(tsif_device->dma);
+			msm_dmov_flush(tsif_device->dma, 1);
 			usleep(10000);
 		}
 	}
@@ -752,7 +752,7 @@ static int tsif_dma_init(struct msm_tsif_device *tsif_device)
 			      offsetof(struct tsif_dmov_cmd, box_ptr));
 		hdr->complete_func = tsif_dmov_complete_func;
 	}
-	msm_dmov_flush(tsif_device->dma);
+	msm_dmov_flush(tsif_device->dma, 1);
 	return 0;
 }
 

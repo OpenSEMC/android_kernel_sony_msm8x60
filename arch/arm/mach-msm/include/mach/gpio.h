@@ -16,9 +16,7 @@
 #ifndef __ASM_ARCH_MSM_GPIO_H
 #define __ASM_ARCH_MSM_GPIO_H
 
-#ifdef CONFIG_ARCH_MSM8X60
 #define ARCH_NR_GPIOS 512
-#endif
 
 #include <linux/interrupt.h>
 #include <asm-generic/gpio.h>
@@ -27,26 +25,6 @@
 #define FIRST_BOARD_GPIO	NR_GPIO_IRQS
 
 extern struct irq_chip msm_gpio_irq_extn;
-
-static inline int gpio_get_value(unsigned gpio)
-{
-	return __gpio_get_value(gpio);
-}
-
-static inline void gpio_set_value(unsigned gpio, int value)
-{
-	__gpio_set_value(gpio, value);
-}
-
-static inline int gpio_cansleep(unsigned gpio)
-{
-	return __gpio_cansleep(gpio);
-}
-
-static inline int gpio_to_irq(unsigned gpio)
-{
-	return __gpio_to_irq(gpio);
-}
 
 /**
  * struct msm_gpio - GPIO pin description
@@ -184,23 +162,30 @@ enum msm_tlmm_hdrive_tgt {
 	TLMM_HDRV_SDC3_CLK,
 	TLMM_HDRV_SDC3_CMD,
 	TLMM_HDRV_SDC3_DATA,
+	TLMM_HDRV_SDC2_CLK,
+	TLMM_HDRV_SDC2_CMD,
+	TLMM_HDRV_SDC2_DATA,
 	TLMM_HDRV_SDC1_CLK,
 	TLMM_HDRV_SDC1_CMD,
 	TLMM_HDRV_SDC1_DATA,
 };
 
 enum msm_tlmm_pull_tgt {
-	TLMM_PULL_SDC4_CMD = 0,
+	TLMM_PULL_SDC4_CLK = 0,
+	TLMM_PULL_SDC4_CMD,
 	TLMM_PULL_SDC4_DATA,
 	TLMM_PULL_SDC3_CLK,
 	TLMM_PULL_SDC3_CMD,
 	TLMM_PULL_SDC3_DATA,
+	TLMM_PULL_SDC2_CLK,
+	TLMM_PULL_SDC2_CMD,
+	TLMM_PULL_SDC2_DATA,
 	TLMM_PULL_SDC1_CLK,
 	TLMM_PULL_SDC1_CMD,
 	TLMM_PULL_SDC1_DATA,
 };
 
-#ifdef CONFIG_MSM_V2_TLMM
+#if defined(CONFIG_GPIO_MSM_V2) || defined(CONFIG_GPIO_MSM_V3)
 void msm_tlmm_set_hdrive(enum msm_tlmm_hdrive_tgt tgt, int drv_str);
 void msm_tlmm_set_pull(enum msm_tlmm_pull_tgt tgt, int pull);
 

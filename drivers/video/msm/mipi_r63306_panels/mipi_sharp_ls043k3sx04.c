@@ -1,7 +1,6 @@
 /* drivers/video/msm/mipi_r63306_panels/mipi_sharp_ls043k3sx04.c
  *
  * Copyright (C) [2011] Sony Ericsson Mobile Communications AB.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2; as
@@ -121,14 +120,14 @@ static const struct mipi_dsi_phy_ctrl dsi_video_mode_phy_db[] = {
 		/* regulator */
 		{0x03, 0x0a, 0x04, 0x00, 0x20},
 		/* timing   */
-		{0x7b, 0x1b, 0x12, 0x00, 0x40, 0x49, 0x17, 0x1e,
-		 0x1e, 0x03, 0x04, 0xa0},
+		{0x78, 0x1a, 0x11, 0x00, 0x3e, 0x43, 0x16, 0x1d,
+		 0x1d, 0x03, 0x04, 0xa0},
 		/* phy ctrl */
 		{0x5f, 0x00, 0x00, 0x10},
 		/* strength */
 		{0xff, 0x00, 0x06, 0x00},
 		/* pll control */
-		{0x00, 0x9e, 0x31, 0xd9, 0x00, 0x50, 0x48, 0x63,
+		{0x00, 0x8f, 0x31, 0xd9, 0x00, 0x50, 0x48, 0x63,
 		 0x41, 0x0f, 0x03,
 		 0x00, 0x14, 0x03, 0x00, 0x02, 0x00, 0x20, 0x00, 0x01 },
 	},
@@ -144,22 +143,22 @@ static struct msm_panel_info *get_panel_info(void)
 	pinfo.pdest = DISPLAY_1;
 	pinfo.wait_cycle = 0;
 	pinfo.bpp = 24;
-	pinfo.lcdc.h_back_porch = 40;
-	pinfo.lcdc.h_front_porch = 160;
-	pinfo.lcdc.h_pulse_width = 4;
-	pinfo.lcdc.v_back_porch = 5;
+	pinfo.lcdc.h_back_porch = 45;
+	pinfo.lcdc.h_front_porch = 128;
+	pinfo.lcdc.h_pulse_width = 3;
+	pinfo.lcdc.v_back_porch = 4;
 	pinfo.lcdc.v_front_porch = 5;
-	pinfo.lcdc.v_pulse_width = 6;
+	pinfo.lcdc.v_pulse_width = 1;
 	pinfo.lcdc.border_clr = 0;	/* blk */
 	pinfo.lcdc.underflow_clr = 0;	/* black */
 	pinfo.lcdc.hsync_skew = 0;
 	pinfo.bl_max = 15;
 	pinfo.bl_min = 1;
 	pinfo.fb_num = 2;
-	pinfo.clk_rate = 431000000;
+	pinfo.clk_rate = 416000000;
 
-	pinfo.lcdc.xres_pad = 0;
-	pinfo.lcdc.yres_pad = 0;
+	pinfo.mipi.xres_pad = 0;
+	pinfo.mipi.yres_pad = 0;
 	pinfo.mipi.mode = DSI_VIDEO_MODE;
 	pinfo.mipi.pulse_mode_hsa_he = TRUE;
 	pinfo.mipi.hfp_power_stop = FALSE;
@@ -187,7 +186,6 @@ static struct msm_panel_info *get_panel_info(void)
 	pinfo.mipi.frame_rate  = 60;
 	pinfo.mipi.dsi_phy_db =
 		(struct mipi_dsi_phy_ctrl *)dsi_video_mode_phy_db;
-	pinfo.mipi.esc_byte_ratio = 4;
 
 	return &pinfo;
 }

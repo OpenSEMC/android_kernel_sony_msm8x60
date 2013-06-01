@@ -16,7 +16,7 @@
 #include <linux/interrupt.h>
 #include <mach/irqs.h>
 #include "msm_vfe8x_proc.h"
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 
 #define ON  1
 #define OFF 0

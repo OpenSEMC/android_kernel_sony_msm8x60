@@ -16,6 +16,7 @@
 #include <mach/rpc_pmapp.h>
 #include <linux/err.h>
 #include <linux/qcomwlan7x27a_pwrif.h>
+#include <linux/module.h>
 
 #define WLAN_GPIO_EXT_POR_N     134
 

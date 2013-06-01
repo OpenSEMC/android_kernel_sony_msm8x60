@@ -1,4 +1,6 @@
-/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+/*
+ * Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -261,7 +263,7 @@ struct dsi_kickoff_action {
 
 #define CMD_REQ_MAX	4
 
-typedef void (*fxn)(u32 data);
+typedef void (*fxn)(int len, char* data);
 
 #define CMD_REQ_RX	0x0001
 #define CMD_REQ_COMMIT 0x0002
@@ -289,6 +291,7 @@ void mipi_dsi_init(void);
 void mipi_dsi_lane_cfg(void);
 void mipi_dsi_bist_ctrl(void);
 int mipi_dsi_buf_alloc(struct dsi_buf *, int size);
+void mipi_dsi_buf_release(struct dsi_buf *dp);
 int mipi_dsi_cmd_dma_add(struct dsi_buf *dp, struct dsi_cmd_desc *cm);
 int mipi_dsi_cmds_tx(struct dsi_buf *dp, struct dsi_cmd_desc *cmds, int cnt);
 
@@ -311,8 +314,6 @@ void mipi_dsi_set_tear_on(struct msm_fb_data_type *mfd);
 void mipi_dsi_set_tear_off(struct msm_fb_data_type *mfd);
 void mipi_dsi_set_backlight(struct msm_fb_data_type *mfd, int level);
 void mipi_dsi_cmd_backlight_tx(struct dsi_buf *dp);
-void mipi_dsi_clk_enable(void);
-void mipi_dsi_clk_disable(void);
 void mipi_dsi_pre_kickoff_action(void);
 void mipi_dsi_post_kickoff_action(void);
 void mipi_dsi_pre_kickoff_add(struct dsi_kickoff_action *act);
@@ -321,21 +322,52 @@ void mipi_dsi_pre_kickoff_del(struct dsi_kickoff_action *act);
 void mipi_dsi_post_kickoff_del(struct dsi_kickoff_action *act);
 void mipi_dsi_controller_cfg(int enable);
 void mipi_dsi_sw_reset(void);
-void mipi_dsi_mdp_busy_wait(struct msm_fb_data_type *mfd);
+void mipi_dsi_mdp_busy_wait(void);
 
 irqreturn_t mipi_dsi_isr(int irq, void *ptr);
 
 void mipi_set_tx_power_mode(int mode);
-void mipi_dsi_phy_ctrl(int on);
 void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info,
 	int target_type);
 int mipi_dsi_clk_div_config(uint8 bpp, uint8 lanes,
 			    uint32 *expected_dsi_pclk);
 int mipi_dsi_clk_init(struct platform_device *pdev);
 void mipi_dsi_clk_deinit(struct device *dev);
+
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+void mipi_dsi_clk_enable(void);
+void mipi_dsi_clk_disable(void);
 void mipi_dsi_prepare_clocks(void);
 void mipi_dsi_unprepare_clocks(void);
 void mipi_dsi_ahb_ctrl(u32 enable);
+void mipi_dsi_phy_ctrl(int on);
+#else
+static inline void mipi_dsi_clk_enable(void)
+{
+	/* empty */
+}
+void mipi_dsi_clk_disable(void)
+{
+	/* empty */
+}
+void mipi_dsi_prepare_clocks(void)
+{
+	/* empty */
+}
+void mipi_dsi_unprepare_clocks(void)
+{
+	/* empty */
+}
+void mipi_dsi_ahb_ctrl(u32 enable)
+{
+	/* empty */
+}
+void mipi_dsi_phy_ctrl(int on)
+{
+	/* empty */
+}
+#endif
+
 void cont_splash_clk_ctrl(int enable);
 void mipi_dsi_turn_on_clks(void);
 void mipi_dsi_turn_off_clks(void);

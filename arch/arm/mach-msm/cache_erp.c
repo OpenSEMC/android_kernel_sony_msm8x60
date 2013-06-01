@@ -90,7 +90,7 @@
 
 #define MODULE_NAME "msm_cache_erp"
 
-#define ERP_LOG_MAGIC_ADDR	0x748
+#define ERP_LOG_MAGIC_ADDR	0x6A4
 #define ERP_LOG_MAGIC		0x11C39893
 
 struct msm_l1_err_stats {
@@ -256,6 +256,8 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	void *const saw_bases[] = {
 		MSM_SAW0_BASE,
 		MSM_SAW1_BASE,
+		MSM_SAW2_BASE,
+		MSM_SAW3_BASE,
 	};
 
 	if (print_regs) {

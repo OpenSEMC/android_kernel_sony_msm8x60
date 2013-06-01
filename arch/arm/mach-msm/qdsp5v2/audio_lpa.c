@@ -2,7 +2,7 @@
  *
  * Copyright (C) 2008 Google, Inc.
  * Copyright (C) 2008 HTC Corporation
- * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -34,6 +34,7 @@
 #include <linux/slab.h>
 #include <linux/msm_audio.h>
 #include <mach/qdsp5v2/audio_dev_ctl.h>
+#include <linux/memory_alloc.h>
 
 #include <mach/qdsp5v2/qdsp5audppmsg.h>
 #include <mach/qdsp5v2/qdsp5audplaycmdi.h>
@@ -75,6 +76,9 @@
 #define AUDLPA_EVENT_NUM 10 /* Default number of pre-allocated event packets */
 
 #define MASK_32BITS     0xFFFFFFFF
+
+#define MAX_BUF 4
+#define BUFSZ (524288)
 
 #define __CONTAINS(r, v, l) ({					\
 	typeof(r) __r = r;					\
@@ -1222,6 +1226,8 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		audio->out_sample_rate = config.sample_rate;
 		audio->out_channel_mode = config.channel_count;
 		audio->out_bits = config.bits;
+		audio->buffer_count = config.buffer_count;
+		audio->buffer_size = config.buffer_size;
 		MM_DBG("AUDIO_SET_CONFIG: config.bits = %d\n", config.bits);
 		rc = 0;
 		break;
@@ -1229,7 +1235,8 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	case AUDIO_GET_CONFIG:{
 		struct msm_audio_config config;
-		config.buffer_count = 2;
+		config.buffer_count = audio->buffer_count;
+		config.buffer_size = audio->buffer_size;
 		config.sample_rate = audio->out_sample_rate;
 		if (audio->out_channel_mode == AUDPP_CMD_PCM_INTF_MONO_V)
 			config.channel_count = 1;
@@ -1356,7 +1363,7 @@ done:
 	return rc;
 }
 
-int audlpa_fsync(struct file *file, int datasync)
+int audlpa_fsync(struct file *file, loff_t ppos1, loff_t ppos2, int datasync)
 {
 	struct audio *audio = file->private_data;
 
@@ -1404,7 +1411,7 @@ static int audio_release(struct inode *inode, struct file *file)
 	wake_up(&audio->event_wait);
 	audlpa_reset_event_queue(audio);
 	iounmap(audio->data);
-	pmem_kfree(audio->phys);
+	free_contiguous_memory_by_paddr(audio->phys);
 	mutex_unlock(&audio->lock);
 #ifdef CONFIG_DEBUG_FS
 	if (audio->dentry)
@@ -1548,6 +1555,8 @@ static int audio_open(struct inode *inode, struct file *file)
 	dec_attrb |= audlpa_decs[audio->minor_no].dec_attrb;
 	audio->codec_ops.ioctl = audlpa_decs[audio->minor_no].ioctl;
 	audio->codec_ops.adec_params = audlpa_decs[audio->minor_no].adec_params;
+	audio->buffer_size = BUFSZ;
+	audio->buffer_count = MAX_BUF;
 
 	dec_attrb |= MSM_AUD_MODE_LP;
 
@@ -1647,7 +1656,7 @@ event_err:
 	msm_adsp_put(audio->audplay);
 err:
 	iounmap(audio->data);
-	pmem_kfree(audio->phys);
+	free_contiguous_memory_by_paddr(audio->phys);
 	audpp_adec_free(audio->dec_id);
 	MM_INFO("audio instance 0x%08x freeing\n", (int)audio);
 	kfree(audio);

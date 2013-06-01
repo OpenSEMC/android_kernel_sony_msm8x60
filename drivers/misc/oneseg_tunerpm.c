@@ -16,6 +16,7 @@
 #include <linux/slab.h>          /* kfree, kzalloc */
 #include <linux/platform_device.h>
 #include <linux/delay.h>
+#include <linux/module.h>
 
 #include <mach/oneseg_tunerpm.h>
 

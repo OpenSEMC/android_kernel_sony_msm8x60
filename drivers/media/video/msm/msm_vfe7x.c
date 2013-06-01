@@ -21,7 +21,7 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include "msm_vfe7x.h"
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 
 #define QDSP_CMDQUEUE 25
 

@@ -4,6 +4,7 @@
  * TI BQ27520 Fuel Gauge interface
  *
  * Copyright (C) 2010-2012 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * Authors: James Jacobsson <james.jacobsson@sonyericsson.com>
  *          Imre Sunyi <imre.sunyi@sonyericsson.com>
@@ -126,10 +127,16 @@
 
 /* Fuelgauge force reset sequence */
 #define GPIO_FG_CE 13
-#define MAX_GPIO_FG_CE_MS 100 /* 100ms */
+#define MAX_GPIO_FG_CE_MS 500 /* 500ms */
 #define MAX_AFTER_DEVICE_RESET_MS 300 /* 300ms */
 
+#define INVALID_BATT_VOLTAGE_RETRY_MAX 5
+#define INVALID_BATT_VOLTAGE_LOWER_LIMIT 2000
+#define INVALID_BATT_VOLTAGE_UPPER_LIMIT 4300
+
 #define SHUTDOWN_WAKELOCK_TIMEOUT (HZ * 5) /* 5sec */
+#define RECHARGE_WAKELOCK_TIMEOUT (HZ * 5) /* 5sec */
+
 
 #define IS_CHG_CONNECTED(old_status, new_status) \
 			(!old_status && new_status)
@@ -192,6 +199,7 @@ struct bq27520_data {
 	struct mutex data_flash_lock;
 	struct mutex control_reg_lock;
 	struct wake_lock wake_lock;
+	struct wake_lock recharge_wake_lock;
 	int got_technology;
 	int lipo_bat_max_volt;
 	int lipo_bat_min_volt;
@@ -223,6 +231,7 @@ static int get_supplier_data(struct device *dev, void *data);
 static int bq27520_write_control(struct bq27520_data *bd, int subcmd);
 static int bq27520_read_bat_flags(struct power_supply *bat_ps);
 static bool bq27520_read_soc(struct bq27520_data *bd);
+static void bq27520_device_reset(struct bq27520_data *bd);
 
 static int calculate_scaled_capacity(struct bq27520_data *bd)
 {
@@ -1569,7 +1578,25 @@ static void bq27520_init_worker(struct work_struct *work)
 	struct bq27520_data *bd =
 		container_of(work, struct bq27520_data, init_work);
 	struct power_supply *ps;
+	s32 volt;
 	int i;
+
+	for (i = 0; i < INVALID_BATT_VOLTAGE_RETRY_MAX; i++) {
+		volt = i2c_smbus_read_word_data(bd->clientp, REG_CMD_VOLTAGE);
+		dev_info(&bd->clientp->dev,
+			"%d: Check battery voltage=%d\n", i + 1, volt);
+		if (volt < 0) {
+			dev_err(&bd->clientp->dev,
+				"Failed read battery voltage. rc=%d\n", volt);
+		} else if (volt <= INVALID_BATT_VOLTAGE_LOWER_LIMIT ||
+			   volt >= INVALID_BATT_VOLTAGE_UPPER_LIMIT) {
+			dev_dbg(&bd->clientp->dev,
+			"Device RESET!! checked by not SYSDOWN but VBAT\n");
+			bq27520_device_reset(bd);
+			break;
+		}
+		msleep(1000);
+	}
 
 	if (bd->battery_dev_name) {
 		for (i = 0; i < RETRY_MAX; i++) {
@@ -1712,8 +1739,12 @@ static void start_read_fc(struct bq27520_data *bd)
 static void stop_read_fc(struct bq27520_data *bd)
 {
 	dev_dbg(&bd->clientp->dev, "%s()\n", __func__);
-	if (delayed_work_pending(&bd->fc_work))
+	if (delayed_work_pending(&bd->fc_work)) {
+		if (bd->chg_connected)
+			wake_lock_timeout(&bd->recharge_wake_lock,
+				RECHARGE_WAKELOCK_TIMEOUT);
 		cancel_delayed_work_sync(&bd->fc_work);
+	}
 }
 
 static void bq27520_read_fc_worker(struct work_struct *work)
@@ -2311,6 +2342,8 @@ static int bq27520_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&bd->fc_work, bq27520_read_fc_worker);
 	wake_lock_init(&bd->wake_lock, WAKE_LOCK_SUSPEND,
 		       "bq27520_shutdown_lock");
+	wake_lock_init(&bd->recharge_wake_lock, WAKE_LOCK_SUSPEND,
+		       "bq27520_recharge_lock");
 
 	rc = power_supply_register(&client->dev, &bd->bat_ps);
 	if (rc) {

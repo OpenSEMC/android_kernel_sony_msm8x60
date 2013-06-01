@@ -61,8 +61,6 @@ struct mhl_state {
 #define MHL_PEER_DCAP_READ		BIT(2)
 #define MHL_ONLINE			(BIT(0) | BIT(1) | BIT(2))
 
-#define MHL_DEVCAP_READ_DONE(___st)	(((___st) & 0xffff) == 0xffff)
-
 #define MSC_COMMAND_QUEUE_SIZE 64
 #define MSC_NORMAL_SEND	0
 #define MSC_PRIOR_SEND	1
@@ -84,7 +82,6 @@ struct mhl_device {
 	unsigned int mhl_online;
 	unsigned int hpd_state;
 	unsigned int tmds_state;
-	u16 devcap_state;
 
 	struct work_struct msc_command_work;
 	int msc_command_counter;
@@ -96,6 +93,7 @@ struct mhl_device {
 
 	/* USB interface */
 	struct work_struct usb_online_work;
+	void (*notify_usb_online)(int online);
 };
 
 /********************************

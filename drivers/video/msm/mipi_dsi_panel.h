@@ -1,7 +1,6 @@
 /* drivers/video/msm/mipi_dsi_panel.h
  *
  * Copyright (C) 2010 Sony Ericsson Mobile Communications AB.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  * Author: Yosuke Hatanaka <yosuke.hatanaka@sonyericsson.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,14 +25,10 @@ struct dsi_controller {
 	struct dsi_cmd_desc *display_on_cmds;
 	struct dsi_cmd_desc *display_off_cmds;
 	struct dsi_cmd_desc *read_id_cmds;
-	struct dsi_cmd_desc *eco_mode_gamma_cmds;
-	struct dsi_cmd_desc *normal_gamma_cmds;
 	int display_init_cmds_size;
 	int display_on_eco_cmds_size;
 	int display_on_cmds_size;
 	int display_off_cmds_size;
-	int eco_mode_gamma_cmds_size;
-	int normal_gamma_cmds_size;
 };
 
 struct panel_id {
@@ -54,7 +49,6 @@ struct mipi_dsi_data {
 	const struct panel_id **panels;
 	int (*lcd_power)(int on);
 	int (*lcd_reset)(int on);
-	int (*eco_mode_switch)(struct msm_fb_data_type *mfd);
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *panel_driver_ic_dir;
 	char *debug_buf;
@@ -69,7 +63,6 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 int __devinit mipi_dsi_need_detect_panel(
 	const struct panel_id **panels);
 int mipi_dsi_update_panel(struct platform_device *pdev);
-int mipi_dsi_eco_mode_switch(struct msm_fb_data_type *mfd);
 
 int eco_mode_sysfs_register(struct device *dev);
 

@@ -44,9 +44,6 @@
 	do {} while (0)
 #endif
 
-#define MSC_COMMAND_TIME_OUT 2010
-#define CHARGER_INIT_WAIT 30
-#define CHARGER_INIT_DELAYED_TIME 20
 enum {
 	POWER_STATE_D0_MHL = 0,
 	POWER_STATE_D0_NO_MHL = 2,
@@ -272,8 +269,7 @@ static int mhl_sii_send_msc_command(struct msc_command_struct *req)
 	init_completion(&mhl_state->msc_command_done);
 	MHL_SII_CBUS_REG_WRITE(0x12, start_bit);
 	timeout = wait_for_completion_interruptible_timeout
-		(&mhl_state->msc_command_done,
-		msecs_to_jiffies(MSC_COMMAND_TIME_OUT));
+		(&mhl_state->msc_command_done, HZ);
 	if (!timeout) {
 		pr_err("%s: cbus_command_send timed out!\n", __func__);
 		goto cbus_command_send_out;
@@ -382,15 +378,16 @@ static void mhl_sii_scdt_status_change(void)
 
 static int mhl_sii_rgnd(void)
 {
-	int ret;
-	int counter;
-	u8 regval = MHL_SII_PAGE3_REG_READ(0x1C) & (BIT(1) | BIT(0));
+	u8 regval;
+
+	if (timer_pending(&mhl_state->discovery_timer))
+		del_timer(&mhl_state->discovery_timer);
+
+	regval = MHL_SII_PAGE3_REG_READ(0x1C) & (BIT(1) | BIT(0));
 	/* 00, 01 or 11 means USB. */
 	/* 10 means 1K impedance (MHL) */
 	mutex_lock(&mhl_state_mutex);
 	if (regval == 0x02) {
-		if (timer_pending(&mhl_state->discovery_timer))
-			del_timer(&mhl_state->discovery_timer);
 		mhl_state->mhl_mode = TRUE;
 		mhl_state->notify_plugged = TRUE;
 		wake_lock(&mhl_wake_lock);
@@ -398,20 +395,7 @@ static int mhl_sii_rgnd(void)
 		mhl_notify_plugged(mhl_state->mhl_dev);
 		if (mhl_state->charging_enable) {
 			/* 500 means 500mA charging ready */
-			ret = mhl_state->charging_enable(TRUE, 500);
-			if (ret) {
-				/* We used late_initcall before for
-				 * charger_enable(). Still, call of
-				 * charger_enable() is some fail.
-				 * Waits here until initialization success it.
-				 */
-				counter = CHARGER_INIT_WAIT;
-				while (ret && counter--) {
-					msleep(CHARGER_INIT_DELAYED_TIME);
-					ret = mhl_state->charging_enable
-						(TRUE, 500);
-				}
-			}
+			mhl_state->charging_enable(TRUE, 500);
 		}
 		pr_info("mhl: MHL detected\n");
 		complete_all(&mhl_state->rgnd_done);
@@ -527,7 +511,7 @@ static void mhl_sii_int4_isr(void)
 		if (regval & BIT(3)) {
 			/* USB SLAVE device detected */
 			mod_timer(&mhl_state->discovery_timer,
-				jiffies + 4*HZ/10);
+				jiffies + HZ/2);
 			/* re-enter power state to D3 */
 			MHL_SII_PAGE3_REG_WRITE(0x21, regval);
 			mhl_sii_switch_power_state
@@ -537,7 +521,7 @@ static void mhl_sii_int4_isr(void)
 		/* VBUS_LOW */
 		if (regval & BIT(5)) {
 			mod_timer(&mhl_state->discovery_timer,
-				jiffies + 4*HZ/10);
+				jiffies + HZ/2);
 			mutex_lock(&mhl_state_mutex);
 			mhl_state->mhl_mode = FALSE;
 			mutex_unlock(&mhl_state_mutex);
@@ -1068,7 +1052,7 @@ static int mhl_sii_discovery_result_get(int *result)
 {
 	int timeout;
 	MHL_DEV_DBG("%s: start\n", __func__);
-	if (mhl_state->power_state != POWER_STATE_D0_MHL) {
+	if (mhl_state->power_state == POWER_STATE_D3) {
 		/* give MHL driver chance to handle RGND interrupt */
 		init_completion(&mhl_state->rgnd_done);
 		timeout = wait_for_completion_interruptible_timeout
@@ -1083,7 +1067,7 @@ static int mhl_sii_discovery_result_get(int *result)
 		*result = mhl_state->mhl_mode ?
 			MHL_DISCOVERY_RESULT_MHL : MHL_DISCOVERY_RESULT_USB;
 	} else {
-		/* in POWER_STATE_D0_MHL. already in MHL mode */
+		/* not in D3. already in MHL mode */
 		*result = MHL_DISCOVERY_RESULT_MHL;
 	}
 	MHL_DEV_DBG("%s: done\n", __func__);
@@ -1216,10 +1200,9 @@ static int mhl_sii_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int mhl_sii_i2c_suspend(struct device *dev)
+static int mhl_sii_i2c_suspend(struct i2c_client *client, pm_message_t msg)
 {
-	/* this is needed isr not to be executed before i2c resume */
-	disable_irq(mhl_state->irq);
+	enable_irq_wake(mhl_state->irq);
 
 	/* sii8334 power shoule be keep enbaled and sii8334 shoule be in D3 */
 	/* and if low_power_mode operation exist, call it for some reason. */
@@ -1229,18 +1212,16 @@ static int mhl_sii_i2c_suspend(struct device *dev)
 	return 0;
 }
 
-static int mhl_sii_i2c_resume(struct device *dev)
+static int mhl_sii_i2c_resume(struct i2c_client *client)
 {
 	/* exit from low_power_mode */
 	if (mhl_state->low_power_mode)
 		mhl_state->low_power_mode(0);
 
-	enable_irq(mhl_state->irq);
+	disable_irq_wake(mhl_state->irq);
 
 	return 0;
 }
-
-SIMPLE_DEV_PM_OPS(mhl_sii_pm_ops, mhl_sii_i2c_suspend, mhl_sii_i2c_resume);
 #endif /* CONFIG_PM */
 
 static const struct i2c_device_id mhl_sii_id[] = {
@@ -1252,12 +1233,13 @@ static struct i2c_driver mhl_sii_i2c_driver = {
 	.driver = {
 		.name = SII_DEV_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_PM
-		.pm = &mhl_sii_pm_ops,
-#endif /* CONFIG_PM */
 	},
 	.probe = mhl_sii_probe,
 	.remove = mhl_sii_remove,
+#ifdef CONFIG_PM
+	.suspend = mhl_sii_i2c_suspend,
+	.resume = mhl_sii_i2c_resume,
+#endif /* CONFIG_PM */
 	.id_table = mhl_sii_id,
 };
 
@@ -1294,18 +1276,7 @@ static void __exit mhl_sii_exit(void)
 	kfree(mhl_state);
 }
 
-
-/*
- * We have to use late_initcall instead of module_init.
- * Because, when we use module_init, the issue occurred
- * that cannot charge a phone from dongle or MHL straight cable
- * when a phone is a power off state.
- * This reason is cause that reading DEV_CAT of mhl_msc_command_done()
- * of the MHL driver is run before calling pm8921_charger_probe().
- * To solve this issue, It is necessary for us to call late_initcall
- * which pm8921_charger driver called.
- */
-late_initcall(mhl_sii_init);
+module_init(mhl_sii_init);
 module_exit(mhl_sii_exit);
 
 MODULE_LICENSE("GPL v2");

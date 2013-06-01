@@ -1,4 +1,5 @@
 /* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2012 Sony Mobile Communications AB
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -9,6 +10,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * NOTE: This file has been modified by Sony Mobile Communications AB.
+ * Modifications are licensed under the License.
  */
 #ifndef __KGSL_PWRCTRL_H
 #define __KGSL_PWRCTRL_H
@@ -27,15 +30,14 @@
 
 struct platform_device;
 
-struct kgsl_clk_stats {
-	unsigned int old_clock_time[KGSL_MAX_PWRLEVELS];
-	unsigned int clock_time[KGSL_MAX_PWRLEVELS];
-	unsigned int on_time_old;
-	ktime_t start;
-	ktime_t stop;
+struct kgsl_busy {
+	struct timeval start;
+	struct timeval stop;
+	int on_time;
+	int time;
+	int on_time_old;
+	int time_old;
 	unsigned int no_nap_cnt;
-	unsigned int elapsed;
-	unsigned int elapsed_old;
 };
 
 struct kgsl_pwrctrl {
@@ -51,14 +53,14 @@ struct kgsl_pwrctrl {
 	unsigned int interval_timeout;
 	bool strtstp_sleepwake;
 	struct regulator *gpu_reg;
-	struct regulator *gpu_cx;
+	struct regulator *gpu_dig;
 	uint32_t pcl;
 	unsigned int nap_allowed;
 	unsigned int idle_needed;
 	const char *irq_name;
 	s64 time;
+	struct kgsl_busy busy;
 	unsigned int restore_slumber;
-	struct kgsl_clk_stats clk_stats;
 };
 
 void kgsl_pwrctrl_irq(struct kgsl_device *device, int state);

@@ -48,6 +48,14 @@ enum pm8921_usb_debounce_time {
 	PM_USB_DEBOUNCE_80P5MS,
 };
 
+enum pm8921_chg_led_src_config {
+	LED_SRC_GND,
+	LED_SRC_VPH_PWR,
+	LED_SRC_5V,
+	LED_SRC_MIN_VPH_5V,
+	LED_SRC_BYPASS,
+};
+
 /**
  * struct pm8921_charger_platform_data -
  * @safety_time:	max charging time in minutes incl. fast and trkl
@@ -55,17 +63,15 @@ enum pm8921_usb_debounce_time {
  * @ttrkl_time:		max trckl charging time in minutes
  *			valid range 1 to 64 mins. PON default 15 min
  * @update_time:	how often the userland be updated of the charging (msec)
- * @update_time_at_low_bat: how often the Fuel Gauge algorithm is updated
- *			when 'low_bat' condition is reached (msec)
  * @max_voltage:	the max voltage (mV) the battery should be charged up to
  * @min_voltage:	the voltage (mV) where charging method switches from
  *			trickle to fast. This is also the minimum voltage the
  *			system operates at
+ * @uvd_thresh_voltage:	the USB falling UVD threshold (mV) (PM8917 only)
  * @resume_voltage_delta:	the (mV) drop to wait for before resume charging
  *				after the battery has been fully charged
  * @resume_soc:		the state of charge (%) to wait for resume charging
  *			after the battery has been fully charged
- * @delta_soc:		the state of charge (%) to recover charging
  * @term_current:	the charger current (mA) at which EOC happens
  * @cool_temp:		the temperature (degC) at which the battery is
  *			considered cool charging current and voltage is reduced.
@@ -110,19 +116,18 @@ enum pm8921_usb_debounce_time {
  *			with the battery terminals shorted. This indicates
  *			resistance of the pads, connectors, battery terminals
  *			and rsense.
- * @eoc_warm_batt:	enable End Of Charge when battery is warm
+ * @led_src_config:	Power source for anode of charger indicator LED.
  */
 struct pm8921_charger_platform_data {
 	struct pm8xxx_charger_core_data	charger_cdata;
 	unsigned int			safety_time;
 	unsigned int			ttrkl_time;
 	unsigned int			update_time;
-	unsigned int			update_time_at_low_bat;
 	unsigned int			max_voltage;
 	unsigned int			min_voltage;
+	unsigned int			uvd_thresh_voltage;
 	unsigned int			resume_voltage_delta;
 	unsigned int			resume_soc;
-	unsigned int			delta_soc;
 	unsigned int			term_current;
 	int				cold_temp;
 	int				cool_temp;
@@ -150,7 +155,7 @@ struct pm8921_charger_platform_data {
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
 	int				rconn_mohm;
-	bool				eoc_warm_batt;
+	enum pm8921_chg_led_src_config	led_src_config;
 };
 
 enum pm8921_charger_source {
@@ -269,7 +274,6 @@ int pm8921_usb_ovp_set_hystersis(enum pm8921_usb_debounce_time ms);
  *
  */
 int pm8921_usb_ovp_disable(int disable);
-void pm8921_update_soc_on_demand(void);
 #else
 static inline void pm8921_charger_vbus_draw(unsigned int mA)
 {
@@ -290,6 +294,10 @@ static inline int pm8921_is_dc_chg_plugged_in(void)
 	return -ENXIO;
 }
 static inline int pm8921_is_battery_present(void)
+{
+	return -ENXIO;
+}
+static inline int pm8917_set_under_voltage_detection_threshold(int mv)
 {
 	return -ENXIO;
 }
@@ -334,12 +342,6 @@ static inline int pm8921_usb_ovp_disable(int disable)
 {
 	return -ENXIO;
 }
-
-static inline void pm8921_update_soc_on_demand(void)
-{
-	return;
-}
-
 #endif
 
 #endif

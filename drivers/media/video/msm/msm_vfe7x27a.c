@@ -15,7 +15,7 @@
 #include <linux/fs.h>
 #include <linux/android_pmem.h>
 #include <linux/slab.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <mach/msm_adsp.h>

@@ -53,6 +53,7 @@ struct bcm_bt_lpm {
 	void (*request_clock_on_locked)(struct uart_port *uport);
 } bt_lpm;
 
+
 static void set_wake_locked(int wake)
 {
 	if (wake == bt_lpm.wake)
@@ -71,13 +72,14 @@ static void set_wake_locked(int wake)
 
 }
 
+
 static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
 {
-	unsigned long flags;
+/*	unsigned long flags; */
 
-	spin_lock_irqsave(&bt_lpm.uport->lock, flags);
+	spin_lock_irqsave(&bt_lpm.uport->lock, serial_flags);
 	set_wake_locked(0);
-	spin_unlock_irqrestore(&bt_lpm.uport->lock, flags);
+	spin_unlock_irqrestore(&bt_lpm.uport->lock, serial_flags);
 
 	return HRTIMER_NORESTART;
 }
@@ -113,7 +115,7 @@ static void update_host_wake_locked(int host_wake)
 static irqreturn_t host_wake_isr(int irq, void *dev)
 {
 	int host_wake;
-	unsigned long flags;
+/*	unsigned long flags; */
 
 	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
 
@@ -122,11 +124,11 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 		return IRQ_HANDLED;
 	}
 
-	spin_lock_irqsave(&bt_lpm.uport->lock, flags);
+	spin_lock_irqsave(&bt_lpm.uport->lock, serial_flags);
 
 	update_host_wake_locked(host_wake);
 
-	spin_unlock_irqrestore(&bt_lpm.uport->lock, flags);
+	spin_unlock_irqrestore(&bt_lpm.uport->lock, serial_flags);
 
 	return IRQ_HANDLED;
 }

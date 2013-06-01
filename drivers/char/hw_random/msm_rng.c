@@ -72,7 +72,7 @@ static int msm_rng_read(struct hwrng *rng, void *data, size_t max, bool wait)
 		return 0;
 
 	/* enable PRNG clock */
-	ret = clk_enable(msm_rng_dev->prng_clk);
+	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to enable clock in callback\n");
 		return 0;
@@ -99,7 +99,7 @@ static int msm_rng_read(struct hwrng *rng, void *data, size_t max, bool wait)
 	} while (currsize < maxsize);
 
 	/* vote to turn off clock */
-	clk_disable(msm_rng_dev->prng_clk);
+	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	return currsize;
 }
@@ -116,7 +116,7 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 	int ret = 0;
 
 	/* Enable the PRNG CLK */
-	ret = clk_enable(msm_rng_dev->prng_clk);
+	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&(msm_rng_dev->pdev)->dev,
 				"failed to enable clock in probe\n");
@@ -146,7 +146,7 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 		mb();
 	}
 
-	clk_disable(msm_rng_dev->prng_clk);
+	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	return 0;
 }
@@ -231,12 +231,19 @@ static int __devexit msm_rng_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static struct of_device_id qrng_match[] = {
+	{	.compatible = "qcom,msm-rng",
+	},
+	{}
+};
+
 static struct platform_driver rng_driver = {
 	.probe      = msm_rng_probe,
 	.remove     = __devexit_p(msm_rng_remove),
 	.driver     = {
 		.name   = DRIVER_NAME,
 		.owner  = THIS_MODULE,
+		.of_match_table = qrng_match,
 	}
 };
 

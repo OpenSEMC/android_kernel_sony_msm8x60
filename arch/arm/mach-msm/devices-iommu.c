@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/bootmem.h>
+#include <linux/module.h>
 #include <mach/irqs.h>
 #include <mach/iommu.h>
 #include <mach/socinfo.h>
@@ -364,25 +365,25 @@ static struct msm_iommu_dev vcodec_b_iommu = {
 static struct msm_iommu_dev gfx3d_iommu = {
 	.name = "gfx3d",
 	.ncb = 3,
-	.ttbr_split = 1,
+	.ttbr_split = 2,
 };
 
 static struct msm_iommu_dev gfx3d1_iommu = {
 	.name = "gfx3d1",
 	.ncb = 3,
-	.ttbr_split = 1,
+	.ttbr_split = 2,
 };
 
 static struct msm_iommu_dev gfx2d0_iommu = {
 	.name = "gfx2d0",
 	.ncb = 2,
-	.ttbr_split = 1,
+	.ttbr_split = 2,
 };
 
 static struct msm_iommu_dev gfx2d1_iommu = {
 	.name = "gfx2d1",
 	.ncb = 2,
-	.ttbr_split = 1,
+	.ttbr_split = 2,
 };
 
 static struct msm_iommu_dev vcap_iommu = {
@@ -987,8 +988,8 @@ static struct platform_device *msm_iommu_jpegd_ctx_devs[] = {
 static int __init iommu_init(void)
 {
 	int ret;
-	if (!msm_soc_version_supports_iommu()) {
-		pr_err("IOMMU is not supported on this SoC version.\n");
+	if (!msm_soc_version_supports_iommu_v1()) {
+		pr_err("IOMMU v1 is not supported on this SoC version.\n");
 		return -ENODEV;
 	}
 

@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2012 Sony Mobile Communications AB.
  * Copyright (c) 2011 Sony Ericsson Mobile Communications AB.
  * Copyright (c) 2010 Christoph Mair <christoph.mair@gmail.com>
  *
@@ -65,7 +64,7 @@
 #define BMP180_CONVERSION_REGISTER_MSB  0xF6
 #define BMP180_CONVERSION_REGISTER_LSB  0xF7
 #define BMP180_CONVERSION_REGISTER_XLSB 0xF8
-#define BMP180_TEMP_CONVERSION_TIME     (5 * 1000)
+#define BMP180_TEMP_CONVERSION_TIME     5
 #define BMP180_VENDORID                 0x0001
 
 struct bmp180_calibration_data {
@@ -77,6 +76,8 @@ struct bmp180_calibration_data {
 
 struct bmp180_data {
 	struct i2c_client *client;
+	struct mutex lock;
+	struct mutex power_lock;
 	struct bmp180_calibration_data calibration;
 	u32 raw_temperature;
 	u32 raw_pressure;
@@ -85,7 +86,6 @@ struct bmp180_data {
 	s32 b6; /* calculated temperature correction coefficient */
 	struct input_dev *ip_dev;
 	struct delayed_work work_data;
-	struct workqueue_struct *wq;
 	unsigned long delay_jiffies;
 	struct bmp180_platform_data *pdata;
 	bool power;
@@ -125,6 +125,7 @@ static inline s32 bmp180_update_raw_temperature(struct bmp180_data *data)
 	u16 tmp;
 	s32 status;
 
+	mutex_lock(&data->lock);
 	status = i2c_smbus_write_byte_data(data->client, BMP180_CTRL_REG,
 						BMP180_TEMP_MEASUREMENT);
 	if (status != 0) {
@@ -132,7 +133,7 @@ static inline s32 bmp180_update_raw_temperature(struct bmp180_data *data)
 			"Error while requesting temperature measurement.\n");
 		goto exit;
 	}
-	usleep_range(BMP180_TEMP_CONVERSION_TIME, BMP180_TEMP_CONVERSION_TIME);
+	msleep(BMP180_TEMP_CONVERSION_TIME);
 
 	status = i2c_smbus_read_i2c_block_data(data->client,
 					BMP180_CONVERSION_REGISTER_MSB,
@@ -150,6 +151,7 @@ static inline s32 bmp180_update_raw_temperature(struct bmp180_data *data)
 	status = 0;   /* everything ok, return 0 */
 
 exit:
+	mutex_unlock(&data->lock);
 	return status;
 }
 
@@ -158,6 +160,7 @@ static inline s32 bmp180_update_raw_pressure(struct bmp180_data *data)
 	u32 tmp = 0;
 	s32 status;
 
+	mutex_lock(&data->lock);
 	status = i2c_smbus_write_byte_data(data->client, BMP180_CTRL_REG,
 					BMP180_PRESSURE_MEASUREMENT +
 					(data->oversampling_setting<<6));
@@ -188,6 +191,7 @@ static inline s32 bmp180_update_raw_pressure(struct bmp180_data *data)
 	status = 0;   /* everything ok, return 0 */
 
 exit:
+	mutex_unlock(&data->lock);
 	return status;
 }
 
@@ -275,27 +279,21 @@ exit:
 	return status;
 }
 
-static int bmp180_power_action(struct bmp180_data *dd, bool action)
-{
-	int rc = 0;
-
-	dd->power = action;
-
-	if ((dd->pdata) && (dd->pdata->gpio_setup))
-		rc = dd->pdata->gpio_setup(dd->power);
-
-	return rc;
-}
-
 static int bmp180_perform_suspend(struct bmp180_data *dd)
 {
 	int rc = 0;
 
-	if (dd->ip_dev->users) {
+	mutex_lock(&dd->power_lock);
 
-		cancel_delayed_work_sync(&dd->work_data);
-		rc = bmp180_power_action(dd, false);
+	if (dd->power) {
+		dd->power = false;
+
+		cancel_delayed_work(&dd->work_data);
+
+		if ((dd->pdata) && (dd->pdata->gpio_setup))
+			rc = dd->pdata->gpio_setup(dd->power);
 	}
+	mutex_unlock(&dd->power_lock);
 	return rc;
 }
 
@@ -303,14 +301,17 @@ static int bmp180_perform_resume(struct bmp180_data *dd)
 {
 	int rc = 0;
 
-	if (dd->ip_dev->users) {
+	mutex_lock(&dd->power_lock);
 
-		rc = bmp180_power_action(dd, true);
-		if (rc)
-			goto exit;
-		queue_delayed_work(dd->wq, &dd->work_data, dd->delay_jiffies);
+	if (!dd->power) {
+		dd->power = true;
+
+		if ((dd->pdata) && (dd->pdata->gpio_setup))
+			rc = dd->pdata->gpio_setup(dd->power);
+
+		schedule_delayed_work(&dd->work_data, dd->delay_jiffies);
 	}
-exit:
+	mutex_unlock(&dd->power_lock);
 	return rc;
 }
 
@@ -416,23 +417,13 @@ static void remove_sysfs_interfaces(struct device *dev)
 static int bmp180_open(struct input_dev *dev)
 {
 	struct bmp180_data *dd = input_get_drvdata(dev);
-	int rc = 0;
-
-	rc = bmp180_power_action(dd, true);
-	if (rc)
-		goto exit;
-	queue_delayed_work(dd->wq, &dd->work_data, dd->delay_jiffies);
-
-exit:
-	return rc;
+	return bmp180_perform_resume(dd);
 }
 
 static void bmp180_close(struct input_dev *dev)
 {
 	struct bmp180_data *dd = input_get_drvdata(dev);
-
-	cancel_delayed_work_sync(&dd->work_data);
-	bmp180_power_action(dd, false);
+	bmp180_perform_suspend(dd);
 }
 
 static void bmp180_work_f(struct work_struct *work)
@@ -440,17 +431,22 @@ static void bmp180_work_f(struct work_struct *work)
 	int err, pressure = 0, temperature = 0;
 	struct bmp180_data *dd = container_of(work, struct bmp180_data,
 						work_data.work);
+	mutex_lock(&dd->power_lock);
 
-	queue_delayed_work(dd->wq, &dd->work_data, dd->delay_jiffies);
-	err = bmp180_get_temperature(dd, &temperature);
-	if (!err)
-		input_report_abs(dd->ip_dev, ABS_MISC, temperature);
+	if (dd->power) {
+		schedule_delayed_work(&dd->work_data, dd->delay_jiffies);
 
-	err = bmp180_get_pressure(dd, &pressure);
-	if (!err) {
-		input_report_abs(dd->ip_dev, ABS_PRESSURE, pressure);
-		input_sync(dd->ip_dev);
+		err = bmp180_get_temperature(dd, &temperature);
+		if (!err)
+			input_report_abs(dd->ip_dev, ABS_MISC, temperature);
+
+		err = bmp180_get_pressure(dd, &pressure);
+		if (!err) {
+			input_report_abs(dd->ip_dev, ABS_PRESSURE, pressure);
+			input_sync(dd->ip_dev);
+		}
 	}
+	mutex_unlock(&dd->power_lock);
 }
 
 static int bmp180_probe(struct i2c_client *client,
@@ -477,7 +473,10 @@ static int bmp180_probe(struct i2c_client *client,
 	}
 
 	/* initialize */
+	mutex_init(&dd->lock);
+	mutex_init(&dd->power_lock);
 
+	dd->power = true;
 	dd->oversampling_setting = BMP180_ULTRA_HIGH_RESOLUTION;
 	dd->last_temp_measurement = 0;
 	dd->delay_jiffies = msecs_to_jiffies(200);
@@ -486,9 +485,11 @@ static int bmp180_probe(struct i2c_client *client,
 	dd->client = client;
 	dd->pdata = client->dev.platform_data;
 
-	err = bmp180_power_action(dd, true);
-	if (err)
-		goto exit_free_dd;
+	if ((dd->pdata) && (dd->pdata->gpio_setup)) {
+		err = dd->pdata->gpio_setup(dd->power);
+		if (err)
+			goto exit_free_dd;
+	}
 
 	err = bmp180_read_calibration_data(client);
 	if (err)
@@ -496,9 +497,6 @@ static int bmp180_probe(struct i2c_client *client,
 
 	version = i2c_smbus_read_byte_data(client, BMP180_VERSION_REG);
 	if (version < 0)
-		goto exit_free_dd;
-	err = bmp180_power_action(dd, false);
-	if (err)
 		goto exit_free_dd;
 
 	/* create input device */
@@ -529,21 +527,12 @@ static int bmp180_probe(struct i2c_client *client,
 	if (err)
 		goto exit_unregister;
 
-	dd->wq = create_singlethread_workqueue("bmp180");
-	if (!dd->wq) {
-		dev_err(&dd->client->dev,
-			"%s: Create work queue failed.\n", __func__);
-		err = -ENOMEM;
-		goto exit_remove_sysfs;
-	}
 	INIT_DELAYED_WORK(&dd->work_data, bmp180_work_f);
 
 	dev_info(&dd->client->dev, "BMP180 ver. %d.%d found.\n",
 			(version & 0x0F), (version & 0xF0) >> 4);
 	goto exit;
 
-exit_remove_sysfs:
-	remove_sysfs_interfaces(&dd->ip_dev->dev);
 exit_unregister:
 	input_unregister_device(dd->ip_dev);
 exit_free_dd:
@@ -558,8 +547,6 @@ static int bmp180_remove(struct i2c_client *client)
 {
 	struct bmp180_data *dd = i2c_get_clientdata(client);
 
-	cancel_delayed_work_sync(&dd->work_data);
-	destroy_workqueue(dd->wq);
 	remove_sysfs_interfaces(&dd->ip_dev->dev);
 	input_unregister_device(dd->ip_dev);
 	kfree(dd);

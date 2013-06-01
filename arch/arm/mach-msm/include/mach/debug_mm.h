@@ -13,6 +13,8 @@
 #ifndef __ARCH_ARM_MACH_MSM_DEBUG_MM_H_
 #define __ARCH_ARM_MACH_MSM_DEBUG_MM_H_
 
+#include <linux/string.h>
+
 /* The below macro removes the directory path name and retains only the
  * file name to avoid long path names in log messages that comes as
  * part of __FILE__ to compiler.

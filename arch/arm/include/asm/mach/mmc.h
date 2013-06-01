@@ -51,6 +51,15 @@ struct msm_mmc_reg_data {
 	bool always_on;
 	/* is low power mode setting required for this regulator? */
 	bool lpm_sup;
+	/*
+	 * Use to indicate if the regulator should be reset at boot time.
+	 * Its needed only when sd card's vdd regulator is always on
+	 * since always on regulators dont get reset at boot time.
+	 *
+	 * It is needed for sd 3.0 card to be detected as a sd 3.0 card
+	 * on device reboot.
+	 */
+	bool reset_at_init;
 };
 
 /*
@@ -59,8 +68,7 @@ struct msm_mmc_reg_data {
  */
 struct msm_mmc_slot_reg_data {
 	struct msm_mmc_reg_data *vdd_data; /* keeps VDD/VCC regulator info */
-	struct msm_mmc_reg_data *vccq_data; /* keeps VCCQ regulator info */
-	struct msm_mmc_reg_data *vddp_data; /* keeps VDD Pad regulator info */
+	struct msm_mmc_reg_data *vdd_io_data; /* keeps VDD IO regulator info */
 };
 
 struct msm_mmc_gpio {
@@ -134,6 +142,8 @@ struct mmc_platform_data {
 	unsigned int xpc_cap;
 	/* Supported UHS-I Modes */
 	unsigned int uhs_caps;
+	/* More capabilities */
+	unsigned int uhs_caps2;
 	void (*sdio_lpm_gpio_setup)(struct device *, unsigned int);
         unsigned int status_irq;
 	unsigned int status_gpio;
@@ -147,10 +157,9 @@ struct mmc_platform_data {
 	unsigned int msmsdcc_fmid;
 	unsigned int msmsdcc_fmax;
 	bool nonremovable;
-	bool pclk_src_dfab;
 	unsigned int mpm_sdiowakeup_int;
 	unsigned int wpswitch_gpio;
-	unsigned char wpswitch_polarity;
+	bool is_wpswitch_active_low;
 	struct msm_mmc_slot_reg_data *vreg_data;
 	int is_sdio_al_client;
 	unsigned int *sup_clk_table;

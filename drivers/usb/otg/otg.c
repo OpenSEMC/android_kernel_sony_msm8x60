@@ -2,7 +2,6 @@
  * otg.c -- USB OTG utility code
  *
  * Copyright (C) 2004 Texas Instruments
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -11,60 +10,61 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/export.h>
 #include <linux/device.h>
 
 #include <linux/usb/otg.h>
 
-static struct otg_transceiver *xceiv;
+static struct usb_phy *phy;
 
 /**
- * otg_get_transceiver - find the (single) OTG transceiver
+ * usb_get_transceiver - find the (single) USB transceiver
  *
  * Returns the transceiver driver, after getting a refcount to it; or
  * null if there is no such transceiver.  The caller is responsible for
- * calling otg_put_transceiver() to release that count.
+ * calling usb_put_transceiver() to release that count.
  *
  * For use by USB host and peripheral drivers.
  */
-struct otg_transceiver *otg_get_transceiver(void)
+struct usb_phy *usb_get_transceiver(void)
 {
-	if (xceiv)
-		get_device(xceiv->dev);
-	return xceiv;
+	if (phy)
+		get_device(phy->dev);
+	return phy;
 }
-EXPORT_SYMBOL(otg_get_transceiver);
+EXPORT_SYMBOL(usb_get_transceiver);
 
 /**
- * otg_put_transceiver - release the (single) OTG transceiver
- * @x: the transceiver returned by otg_get_transceiver()
+ * usb_put_transceiver - release the (single) USB transceiver
+ * @x: the transceiver returned by usb_get_transceiver()
  *
- * Releases a refcount the caller received from otg_get_transceiver().
+ * Releases a refcount the caller received from usb_get_transceiver().
  *
  * For use by USB host and peripheral drivers.
  */
-void otg_put_transceiver(struct otg_transceiver *x)
+void usb_put_transceiver(struct usb_phy *x)
 {
 	if (x)
 		put_device(x->dev);
 }
-EXPORT_SYMBOL(otg_put_transceiver);
+EXPORT_SYMBOL(usb_put_transceiver);
 
 /**
- * otg_set_transceiver - declare the (single) OTG transceiver
- * @x: the USB OTG transceiver to be used; or NULL
+ * usb_set_transceiver - declare the (single) USB transceiver
+ * @x: the USB transceiver to be used; or NULL
  *
  * This call is exclusively for use by transceiver drivers, which
  * coordinate the activities of drivers for host and peripheral
  * controllers, and in some cases for VBUS current regulation.
  */
-int otg_set_transceiver(struct otg_transceiver *x)
+int usb_set_transceiver(struct usb_phy *x)
 {
-	if (xceiv && x)
+	if (phy && x)
 		return -EBUSY;
-	xceiv = x;
+	phy = x;
 	return 0;
 }
-EXPORT_SYMBOL(otg_set_transceiver);
+EXPORT_SYMBOL(usb_set_transceiver);
 
 const char *otg_state_string(enum usb_otg_state state)
 {
@@ -95,10 +95,6 @@ const char *otg_state_string(enum usb_otg_state state)
 		return "b_wait_acon";
 	case OTG_STATE_B_HOST:
 		return "b_host";
-	case OTG_STATE_MHL_DETECTED:
-		return "mhl_detected";
-	case OTG_STATE_MHL_CONNECTED:
-		return "mhl_connected";
 	default:
 		return "UNDEFINED";
 	}
@@ -107,14 +103,14 @@ EXPORT_SYMBOL(otg_state_string);
 
 int otg_send_event(enum usb_otg_event event)
 {
-	struct otg_transceiver *otg = otg_get_transceiver();
+	struct usb_phy *phy = usb_get_transceiver();
 	int ret = -ENOTSUPP;
 
-	if (otg && otg->send_event)
-		ret = otg->send_event(otg, event);
+	if (phy && phy->otg && phy->otg->send_event)
+		ret = phy->otg->send_event(phy->otg, event);
 
-	if (otg)
-		otg_put_transceiver(otg);
+	if (phy)
+		usb_put_transceiver(phy);
 
 	return ret;
 }

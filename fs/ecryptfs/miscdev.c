@@ -49,10 +49,7 @@ ecryptfs_miscdev_poll(struct file *file, poll_table *pt)
 	mutex_lock(&ecryptfs_daemon_hash_mux);
 	/* TODO: Just use file->private_data? */
 	rc = ecryptfs_find_daemon_by_euid(&daemon, euid, current_user_ns());
-	if (rc || !daemon) {
-		mutex_unlock(&ecryptfs_daemon_hash_mux);
-		return -EINVAL;
-	}
+	BUG_ON(rc || !daemon);
 	mutex_lock(&daemon->mux);
 	mutex_unlock(&ecryptfs_daemon_hash_mux);
 	if (daemon->flags & ECRYPTFS_DAEMON_ZOMBIE) {
@@ -125,7 +122,6 @@ ecryptfs_miscdev_open(struct inode *inode, struct file *file)
 		goto out_unlock_daemon;
 	}
 	daemon->flags |= ECRYPTFS_DAEMON_MISCDEV_OPEN;
-	file->private_data = daemon;
 	atomic_inc(&ecryptfs_num_miscdev_opens);
 out_unlock_daemon:
 	mutex_unlock(&daemon->mux);
@@ -156,9 +152,9 @@ ecryptfs_miscdev_release(struct inode *inode, struct file *file)
 
 	mutex_lock(&ecryptfs_daemon_hash_mux);
 	rc = ecryptfs_find_daemon_by_euid(&daemon, euid, current_user_ns());
-	if (rc || !daemon)
-		daemon = file->private_data;
+	BUG_ON(rc || !daemon);
 	mutex_lock(&daemon->mux);
+	BUG_ON(daemon->pid != task_pid(current));
 	BUG_ON(!(daemon->flags & ECRYPTFS_DAEMON_MISCDEV_OPEN));
 	daemon->flags &= ~ECRYPTFS_DAEMON_MISCDEV_OPEN;
 	atomic_dec(&ecryptfs_num_miscdev_opens);
@@ -195,33 +191,55 @@ int ecryptfs_send_miscdev(char *data, size_t data_size,
 			  struct ecryptfs_msg_ctx *msg_ctx, u8 msg_type,
 			  u16 msg_flags, struct ecryptfs_daemon *daemon)
 {
-	struct ecryptfs_message *msg;
-
-	msg = kmalloc((sizeof(*msg) + data_size), GFP_KERNEL);
-	if (!msg) {
-		printk(KERN_ERR "%s: Out of memory whilst attempting "
-		       "to kmalloc(%zd, GFP_KERNEL)\n", __func__,
-		       (sizeof(*msg) + data_size));
-		return -ENOMEM;
-	}
+	int rc = 0;
 
 	mutex_lock(&msg_ctx->mux);
-	msg_ctx->msg = msg;
+	msg_ctx->msg = kmalloc((sizeof(*msg_ctx->msg) + data_size),
+			       GFP_KERNEL);
+	if (!msg_ctx->msg) {
+		rc = -ENOMEM;
+		printk(KERN_ERR "%s: Out of memory whilst attempting "
+		       "to kmalloc(%zd, GFP_KERNEL)\n", __func__,
+		       (sizeof(*msg_ctx->msg) + data_size));
+		goto out_unlock;
+	}
 	msg_ctx->msg->index = msg_ctx->index;
 	msg_ctx->msg->data_len = data_size;
 	msg_ctx->type = msg_type;
 	memcpy(msg_ctx->msg->data, data, data_size);
 	msg_ctx->msg_size = (sizeof(*msg_ctx->msg) + data_size);
-	list_add_tail(&msg_ctx->daemon_out_list, &daemon->msg_ctx_out_queue);
-	mutex_unlock(&msg_ctx->mux);
-
 	mutex_lock(&daemon->mux);
+	list_add_tail(&msg_ctx->daemon_out_list, &daemon->msg_ctx_out_queue);
 	daemon->num_queued_msg_ctx++;
 	wake_up_interruptible(&daemon->wait);
 	mutex_unlock(&daemon->mux);
-
-	return 0;
+out_unlock:
+	mutex_unlock(&msg_ctx->mux);
+	return rc;
 }
+
+/*
+ * miscdevfs packet format:
+ *  Octet 0: Type
+ *  Octets 1-4: network byte order msg_ctx->counter
+ *  Octets 5-N0: Size of struct ecryptfs_message to follow
+ *  Octets N0-N1: struct ecryptfs_message (including data)
+ *
+ *  Octets 5-N1 not written if the packet type does not include a message
+ */
+#define PKT_TYPE_SIZE		1
+#define PKT_CTR_SIZE		4
+#define MIN_NON_MSG_PKT_SIZE	(PKT_TYPE_SIZE + PKT_CTR_SIZE)
+#define MIN_MSG_PKT_SIZE	(PKT_TYPE_SIZE + PKT_CTR_SIZE \
+				 + ECRYPTFS_MIN_PKT_LEN_SIZE)
+/* 4 + ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES comes from tag 65 packet format */
+#define MAX_MSG_PKT_SIZE	(PKT_TYPE_SIZE + PKT_CTR_SIZE \
+				 + ECRYPTFS_MAX_PKT_LEN_SIZE \
+				 + sizeof(struct ecryptfs_message) \
+				 + 4 + ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES)
+#define PKT_TYPE_OFFSET		0
+#define PKT_CTR_OFFSET		PKT_TYPE_SIZE
+#define PKT_LEN_OFFSET		(PKT_TYPE_SIZE + PKT_CTR_SIZE)
 
 /**
  * ecryptfs_miscdev_read - format and send message from queue
@@ -242,7 +260,7 @@ ecryptfs_miscdev_read(struct file *file, char __user *buf, size_t count,
 	struct ecryptfs_daemon *daemon;
 	struct ecryptfs_msg_ctx *msg_ctx;
 	size_t packet_length_size;
-	char packet_length[3];
+	char packet_length[ECRYPTFS_MAX_PKT_LEN_SIZE];
 	size_t i;
 	size_t total_length;
 	uid_t euid = current_euid();
@@ -251,16 +269,8 @@ ecryptfs_miscdev_read(struct file *file, char __user *buf, size_t count,
 	mutex_lock(&ecryptfs_daemon_hash_mux);
 	/* TODO: Just use file->private_data? */
 	rc = ecryptfs_find_daemon_by_euid(&daemon, euid, current_user_ns());
-	if (rc || !daemon) {
-		mutex_unlock(&ecryptfs_daemon_hash_mux);
-		return -EINVAL;
-	}
+	BUG_ON(rc || !daemon);
 	mutex_lock(&daemon->mux);
-	if (task_pid(current) != daemon->pid) {
-		mutex_unlock(&daemon->mux);
-		mutex_unlock(&ecryptfs_daemon_hash_mux);
-		return -EPERM;
-	}
 	if (daemon->flags & ECRYPTFS_DAEMON_ZOMBIE) {
 		rc = 0;
 		mutex_unlock(&ecryptfs_daemon_hash_mux);
@@ -297,6 +307,9 @@ check_list:
 		 * message from the queue; try again */
 		goto check_list;
 	}
+	BUG_ON(euid != daemon->euid);
+	BUG_ON(current_user_ns() != daemon->user_ns);
+	BUG_ON(task_pid(current) != daemon->pid);
 	msg_ctx = list_first_entry(&daemon->msg_ctx_out_queue,
 				   struct ecryptfs_msg_ctx, daemon_out_list);
 	BUG_ON(!msg_ctx);
@@ -315,15 +328,8 @@ check_list:
 		packet_length_size = 0;
 		msg_ctx->msg_size = 0;
 	}
-	/* miscdevfs packet format:
-	 *  Octet 0: Type
-	 *  Octets 1-4: network byte order msg_ctx->counter
-	 *  Octets 5-N0: Size of struct ecryptfs_message to follow
-	 *  Octets N0-N1: struct ecryptfs_message (including data)
-	 *
-	 *  Octets 5-N1 not written if the packet type does not
-	 *  include a message */
-	total_length = (1 + 4 + packet_length_size + msg_ctx->msg_size);
+	total_length = (PKT_TYPE_SIZE + PKT_CTR_SIZE + packet_length_size
+			+ msg_ctx->msg_size);
 	if (count < total_length) {
 		rc = 0;
 		printk(KERN_WARNING "%s: Only given user buffer of "
@@ -334,9 +340,10 @@ check_list:
 	rc = -EFAULT;
 	if (put_user(msg_ctx->type, buf))
 		goto out_unlock_msg_ctx;
-	if (put_user(cpu_to_be32(msg_ctx->counter), (__be32 __user *)(buf + 1)))
+	if (put_user(cpu_to_be32(msg_ctx->counter),
+		     (__be32 __user *)(&buf[PKT_CTR_OFFSET])))
 		goto out_unlock_msg_ctx;
-	i = 5;
+	i = PKT_TYPE_SIZE + PKT_CTR_SIZE;
 	if (msg_ctx->msg) {
 		if (copy_to_user(&buf[i], packet_length, packet_length_size))
 			goto out_unlock_msg_ctx;
@@ -401,12 +408,6 @@ out:
  * @count: Amount of data in @buf
  * @ppos: Pointer to offset in file (ignored)
  *
- * miscdevfs packet format:
- *  Octet 0: Type
- *  Octets 1-4: network byte order msg_ctx->counter (0's for non-response)
- *  Octets 5-N0: Size of struct ecryptfs_message to follow
- *  Octets N0-N1: struct ecryptfs_message (including data)
- *
  * Returns the number of bytes read from @buf
  */
 static ssize_t
@@ -415,30 +416,25 @@ ecryptfs_miscdev_write(struct file *file, const char __user *buf,
 {
 	__be32 counter_nbo;
 	u32 seq;
-	size_t packet_size, packet_size_length, i;
-	ssize_t sz = 0;
+	size_t packet_size, packet_size_length;
 	char *data;
 	uid_t euid = current_euid();
-	unsigned char packet_size_peek[3];
-	int rc;
+	unsigned char packet_size_peek[ECRYPTFS_MAX_PKT_LEN_SIZE];
+	ssize_t rc;
 
 	if (count == 0) {
-		goto out;
-	} else if (count == (1 + 4)) {
+		return 0;
+	} else if (count == MIN_NON_MSG_PKT_SIZE) {
 		/* Likely a harmless MSG_HELO or MSG_QUIT - no packet length */
 		goto memdup;
-	} else if (count < (1 + 4 + 1)
-		   || count > (1 + 4 + 2 + sizeof(struct ecryptfs_message) + 4
-			       + ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES)) {
+	} else if (count < MIN_MSG_PKT_SIZE || count > MAX_MSG_PKT_SIZE) {
 		printk(KERN_WARNING "%s: Acceptable packet size range is "
-		       "[%d-%u], but amount of data written is [%zu].",
-		       __func__, (1 + 4 + 1),
-		       (1 + 4 + 2 + sizeof(struct ecryptfs_message) + 4
-			+ ECRYPTFS_MAX_ENCRYPTED_KEY_BYTES), count);
+		       "[%d-%zu], but amount of data written is [%zu].",
+		       __func__, MIN_MSG_PKT_SIZE, MAX_MSG_PKT_SIZE, count);
 		return -EINVAL;
 	}
 
-	if (copy_from_user(packet_size_peek, (buf + 1 + 4),
+	if (copy_from_user(packet_size_peek, &buf[PKT_LEN_OFFSET],
 			   sizeof(packet_size_peek))) {
 		printk(KERN_WARNING "%s: Error while inspecting packet size\n",
 		       __func__);
@@ -449,11 +445,12 @@ ecryptfs_miscdev_write(struct file *file, const char __user *buf,
 					  &packet_size_length);
 	if (rc) {
 		printk(KERN_WARNING "%s: Error parsing packet length; "
-		       "rc = [%d]\n", __func__, rc);
+		       "rc = [%zd]\n", __func__, rc);
 		return rc;
 	}
 
-	if ((1 + 4 + packet_size_length + packet_size) != count) {
+	if ((PKT_TYPE_SIZE + PKT_CTR_SIZE + packet_size_length + packet_size)
+	    != count) {
 		printk(KERN_WARNING "%s: Invalid packet size [%zu]\n", __func__,
 		       packet_size);
 		return -EINVAL;
@@ -464,31 +461,33 @@ memdup:
 	if (IS_ERR(data)) {
 		printk(KERN_ERR "%s: memdup_user returned error [%ld]\n",
 		       __func__, PTR_ERR(data));
-		goto out;
+		return PTR_ERR(data);
 	}
-	sz = count;
-	i = 0;
-	switch (data[i++]) {
+	switch (data[PKT_TYPE_OFFSET]) {
 	case ECRYPTFS_MSG_RESPONSE:
-		if (count < (1 + 4 + 1 + sizeof(struct ecryptfs_message))) {
+		if (count < (MIN_MSG_PKT_SIZE
+			     + sizeof(struct ecryptfs_message))) {
 			printk(KERN_WARNING "%s: Minimum acceptable packet "
 			       "size is [%zd], but amount of data written is "
 			       "only [%zd]. Discarding response packet.\n",
 			       __func__,
-			       (1 + 4 + 1 + sizeof(struct ecryptfs_message)),
-			       count);
+			       (MIN_MSG_PKT_SIZE
+				+ sizeof(struct ecryptfs_message)), count);
+			rc = -EINVAL;
 			goto out_free;
 		}
-		memcpy(&counter_nbo, &data[i], 4);
+		memcpy(&counter_nbo, &data[PKT_CTR_OFFSET], PKT_CTR_SIZE);
 		seq = be32_to_cpu(counter_nbo);
-		i += 4 + packet_size_length;
-		rc = ecryptfs_miscdev_response(&data[i], packet_size,
-					       euid, current_user_ns(),
-					       task_pid(current), seq);
-		if (rc)
+		rc = ecryptfs_miscdev_response(
+				&data[PKT_LEN_OFFSET + packet_size_length],
+				packet_size, euid, current_user_ns(),
+				task_pid(current), seq);
+		if (rc) {
 			printk(KERN_WARNING "%s: Failed to deliver miscdev "
-			       "response to requesting operation; rc = [%d]\n",
+			       "response to requesting operation; rc = [%zd]\n",
 			       __func__, rc);
+			goto out_free;
+		}
 		break;
 	case ECRYPTFS_MSG_HELO:
 	case ECRYPTFS_MSG_QUIT:
@@ -497,12 +496,13 @@ memdup:
 		ecryptfs_printk(KERN_WARNING, "Dropping miscdev "
 				"message of unrecognized type [%d]\n",
 				data[0]);
-		break;
+		rc = -EINVAL;
+		goto out_free;
 	}
+	rc = count;
 out_free:
 	kfree(data);
-out:
-	return sz;
+	return rc;
 }
 
 

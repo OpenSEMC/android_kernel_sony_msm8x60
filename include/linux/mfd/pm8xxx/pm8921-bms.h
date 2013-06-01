@@ -1,5 +1,4 @@
 /* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,7 +14,6 @@
 #define __PM8XXX_BMS_H
 
 #include <linux/errno.h>
-#include <linux/types.h>
 
 #define PM8921_BMS_DEV_NAME	"pm8921-bms"
 
@@ -101,11 +99,11 @@ struct double_row_lut {
  *			and percent charge
  * @rbatt_sf_lut:	table to get battery resistance scaling factor given
  *			temperature and percent charge
- * @rbatt_temp_soc_lut:	table to get rbatt given batt temp and soc
  * @default_rbatt_mohm:	the default value of battery resistance to use when
  *			readings from bms are not available.
  * @delta_rbatt_mohm:	the resistance to be added towards lower soc to
  *			compensate for battery capacitance.
+ * @rbatt_temp_soc_lut:	table to get rbatt given batt temp and soc
  */
 struct pm8921_bms_battery_data {
 	unsigned int		fcc;
@@ -114,9 +112,9 @@ struct pm8921_bms_battery_data {
 	struct pc_temp_ocv_lut	*pc_temp_ocv_lut;
 	struct sf_lut		*pc_sf_lut;
 	struct sf_lut		*rbatt_sf_lut;
-	struct double_row_lut	*rbatt_temp_soc_lut;
 	int			default_rbatt_mohm;
 	int			delta_rbatt_mohm;
+	struct double_row_lut		*rbatt_temp_soc_lut;
 };
 
 struct pm8xxx_bms_core_data {
@@ -140,10 +138,8 @@ enum battery_type {
  * @i_test:		current at which the unusable charger cutoff is to be
  *			calculated or the peak system current (mA)
  * @v_failure:		the voltage at which the battery is considered empty(mV)
- * @calib_delay_ms:	how often should the adc calculate gain and offset
  * @enable_fcc_learning:	if set the driver will learn full charge
  *				capacity of the battery upon end of charge
- * @allow_soc_increase:	allow soc increase without charger attached
  */
 struct pm8921_bms_platform_data {
 	struct pm8xxx_bms_core_data	bms_cdata;
@@ -152,12 +148,10 @@ struct pm8921_bms_platform_data {
 	unsigned int			r_sense;
 	unsigned int			i_test;
 	unsigned int			v_failure;
-	unsigned int			calib_delay_ms;
 	unsigned int			max_voltage_uv;
-	unsigned int			default_rbatt_mohms;
 	unsigned int			rconn_mohm;
 	int				enable_fcc_learning;
-	bool				allow_soc_increase;
+	unsigned int			default_rbatt_mohms;
 };
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)
@@ -236,9 +230,12 @@ int pm8921_bms_get_simultaneous_battery_voltage_and_current(int *ibat_ua,
  */
 int pm8921_bms_get_rbatt(void);
 /**
- * pm8921_bms_get_soc_by_vbat - returns SOC corresponding to vbat in argument.
+ * pm8921_bms_invalidate_shutdown_soc - function to notify the bms driver that
+ *					the battery was replaced between reboot
+ *					and so it should not use the shutdown
+ *					soc stored in a coincell backed register
  */
-int pm8921_bms_get_soc_by_vbat(int ocv_uv, int batt_temp, int chargecycles);
+void pm8921_bms_invalidate_shutdown_soc(void);
 #else
 static inline int pm8921_bms_get_vsense_avg(int *result)
 {
@@ -278,10 +275,8 @@ static inline int pm8921_bms_get_rbatt(void)
 {
 	return -EINVAL;
 }
-static inline int pm8921_bms_get_soc_by_vbat(int ocv_uv, int batt_temp,
-	int chargecycles)
+static inline void pm8921_bms_invalidate_shutdown_soc(void)
 {
-	return -EINVAL;
 }
 #endif
 

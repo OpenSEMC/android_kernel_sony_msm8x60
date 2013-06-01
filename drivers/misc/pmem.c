@@ -2,6 +2,7 @@
  *
  * Copyright (C) 2007 Google, Inc.
  * Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -14,6 +15,7 @@
  *
  */
 
+#include <linux/export.h>
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
 #include <linux/fs.h>
@@ -24,6 +26,7 @@
 #include <linux/debugfs.h>
 #include <linux/android_pmem.h>
 #include <linux/mempolicy.h>
+#include <linux/sched.h>
 #include <linux/kobject.h>
 #include <linux/pm_runtime.h>
 #include <linux/memory_alloc.h>
@@ -1648,17 +1651,6 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	down_write(&data->sem);
-	/* check this file isn't already mmaped, for submaps check this file
-	 * has never been mmaped */
-	if ((data->flags & PMEM_FLAGS_SUBMAP) ||
-	    (data->flags & PMEM_FLAGS_UNSUBMAP)) {
-#if PMEM_DEBUG
-		pr_err("pmem: you can only mmap a pmem file once, "
-		       "this file is already mmaped. %x\n", data->flags);
-#endif
-		ret = -EINVAL;
-		goto error;
-	}
 	/* if file->private_data == unalloced, alloc*/
 	if (data->index == -1) {
 		mutex_lock(&pmem[id].arena_mutex);
@@ -2006,10 +1998,11 @@ int pmem_cache_maint(struct file *file, unsigned int cmd,
 	}
 	pmem_len = pmem[id].len(id, data);
 	pmem_start_addr = pmem[id].start_addr(id, data);
-	up_read(&data->sem);
 
-	if (offset + length > pmem_len)
+	if (offset + length > pmem_len) {
+		up_read(&data->sem);
 		return -EINVAL;
+	}
 
 	vaddr = pmem_addr->vaddr;
 	paddr = pmem_start_addr + offset;
@@ -2024,7 +2017,7 @@ int pmem_cache_maint(struct file *file, unsigned int cmd,
 		clean_caches(vaddr, length, paddr);
 	else if (cmd == PMEM_INV_CACHES)
 		invalidate_caches(vaddr, length, paddr);
-
+	up_read(&data->sem);
 	return 0;
 }
 EXPORT_SYMBOL(pmem_cache_maint);
@@ -2564,8 +2557,7 @@ static void ioremap_pmem(int id)
 			type = get_mem_type(MT_DEVICE);
 		DLOG("PMEMDEBUG: Remap phys %lx to virt %lx on %s\n",
 			pmem[id].base, addr, pmem[id].name);
-		if (ioremap_page_range(addr, addr + pmem[id].size,
-			pmem[id].base, __pgprot(type->prot_pte))) {
+		if (ioremap_pages(addr, pmem[id].base,  pmem[id].size, type)) {
 				pr_err("pmem: Failed to map pages\n");
 				BUG();
 		}
@@ -2785,7 +2777,8 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	pmem[id].dev.name = pdata->name;
 	pmem[id].dev.minor = id;
 	pmem[id].dev.fops = &pmem_fops;
-	pr_info("pmem: Initializing %s (user-space) as %s\n",
+	pmem[id].reusable = pdata->reusable;
+	pr_info("pmem: Initializing %s as %s\n",
 		pdata->name, pdata->cached ? "cached" : "non-cached");
 
 	if (misc_register(&pmem[id].dev)) {
@@ -2793,24 +2786,23 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 		goto err_cant_register_device;
 	}
 
-	pmem[id].base = allocate_contiguous_memory_nomap(pmem[id].size,
-		pmem[id].memory_type, PAGE_SIZE);
-	if (!pmem[id].base) {
-		pr_err("pmem: Cannot allocate from reserved memory for %s\n",
-		 pdata->name);
-		goto err_misc_deregister;
+	if (!pmem[id].reusable) {
+		pmem[id].base = allocate_contiguous_memory_nomap(pmem[id].size,
+			pmem[id].memory_type, PAGE_SIZE);
+		if (!pmem[id].base) {
+			pr_err("pmem: Cannot allocate from reserved memory for %s\n",
+				pdata->name);
+			goto err_misc_deregister;
+		}
 	}
 
-	pr_info("allocating %lu bytes at %p (%lx physical) for %s\n",
-		pmem[id].size, pmem[id].vbase, pmem[id].base, pmem[id].name);
-
-	pmem[id].reusable = pdata->reusable;
 	/* reusable pmem requires map on demand */
 	pmem[id].map_on_demand = pdata->map_on_demand || pdata->reusable;
 	if (pmem[id].map_on_demand) {
 		if (pmem[id].reusable) {
 			const struct fmem_data *fmem_info = fmem_get_info();
 			pmem[id].area = fmem_info->area;
+			pmem[id].base = fmem_info->phys;
 		} else {
 			pmem_vma = get_vm_area(pmem[id].size, VM_IOREMAP);
 			if (!pmem_vma) {
@@ -2844,12 +2836,17 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	if (pdata->release_region)
 		pmem[id].mem_release = pdata->release_region;
 
+	pr_info("allocating %lu bytes at %lx physical for %s\n",
+		pmem[id].size, pmem[id].base, pmem[id].name);
+
 	return 0;
 
 cleanup_vm:
-	remove_vm_area(pmem_vma);
+	if (!pmem[id].reusable)
+		remove_vm_area(pmem_vma);
 err_free:
-	free_contiguous_memory_by_paddr(pmem[id].base);
+	if (!pmem[id].reusable)
+		free_contiguous_memory_by_paddr(pmem[id].base);
 err_misc_deregister:
 	misc_deregister(&pmem[id].dev);
 err_cant_register_device:

@@ -543,6 +543,7 @@ enum radio_state_t {
 	FM_RECV,
 	FM_TRANS,
 	FM_RESET,
+	FM_CALIB
 };
 
 enum v4l2_cid_private_iris_t {
@@ -602,7 +603,6 @@ enum v4l2_cid_private_iris_t {
 	V4L2_CID_PRIVATE_SPUR_FREQ_RMSSI,
 	V4L2_CID_PRIVATE_SPUR_SELECTION,
 	V4L2_CID_PRIVATE_UPDATE_SPUR_TABLE,
-	V4L2_CID_PRIVATE_VALID_CHANNEL,
 
 	/*using private CIDs under userclass*/
 	V4L2_CID_PRIVATE_IRIS_READ_DEFAULT = 0x00980928,
@@ -662,7 +662,7 @@ enum iris_region_t {
 	IRIS_REGION_OTHER
 };
 
-#define STD_BUF_SIZE        (128)
+#define STD_BUF_SIZE        (64)
 
 enum iris_buf_t {
 	IRIS_BUF_SRCH_LIST,
@@ -790,11 +790,6 @@ enum spur_entry_levels {
 #define CALIB_DATA_OFSET  2
 #define CALIB_MODE_OFSET  1
 #define MAX_CALIB_SIZE 75
-
-/* Channel validity */
-#define INVALID_CHANNEL		(0)
-#define VALID_CHANNEL		(1)
-
 struct hci_fm_set_cal_req_proc {
 	__u8    mode;
 	/*Max process calibration data size*/

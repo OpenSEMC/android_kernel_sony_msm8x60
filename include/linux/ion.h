@@ -21,7 +21,6 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-
 struct ion_handle;
 /**
  * enum ion_heap_types - list of all possible types of heaps
@@ -84,6 +83,14 @@ enum ion_fixed_position {
 	FIXED_LOW,
 	FIXED_MIDDLE,
 	FIXED_HIGH,
+};
+
+enum cp_mem_usage {
+	VIDEO_BITSTREAM = 0x1,
+	VIDEO_PIXEL = 0x2,
+	VIDEO_NONPIXEL = 0x3,
+	MAX_USAGE = 0x4,
+	UNKNOWN = 0x7FFFFFFF,
 };
 
 /**
@@ -253,6 +260,17 @@ struct ion_platform_data {
 #ifdef CONFIG_ION
 
 /**
+ * ion_reserve() - reserve memory for ion heaps if applicable
+ * @data:	platform data specifying starting physical address and
+ *		size
+ *
+ * Calls memblock reserve to set aside memory for heaps that are
+ * located at specific memory addresses or of specfic sizes not
+ * managed by the kernel
+ */
+void ion_reserve(struct ion_platform_data *data);
+
+/**
  * ion_client_create() -  allocate a client and returns it
  * @dev:	the global ion device
  * @heap_mask:	mask of heaps this client can allocate from
@@ -315,7 +333,7 @@ void ion_free(struct ion_client *client, struct ion_handle *handle);
  * This function queries the heap for a particular handle to get the
  * handle's physical address.  It't output is only correct if
  * a heap returns physically contiguous memory -- in other cases
- * this api should not be implemented -- ion_map_dma should be used
+ * this api should not be implemented -- ion_sg_table should be used
  * instead.  Returns -EINVAL if the handle is invalid.  This has
  * no implications on the reference counting of the handle --
  * the returned value may not be valid if the caller is not
@@ -323,6 +341,17 @@ void ion_free(struct ion_client *client, struct ion_handle *handle);
  */
 int ion_phys(struct ion_client *client, struct ion_handle *handle,
 	     ion_phys_addr_t *addr, size_t *len);
+
+/**
+ * ion_map_dma - return an sg_table describing a handle
+ * @client:	the client
+ * @handle:	the handle
+ *
+ * This function returns the sg_table describing
+ * a particular ion handle.
+ */
+struct sg_table *ion_sg_table(struct ion_client *client,
+			      struct ion_handle *handle);
 
 /**
  * ion_map_kernel - create mapping for the given handle
@@ -345,64 +374,22 @@ void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle,
 void ion_unmap_kernel(struct ion_client *client, struct ion_handle *handle);
 
 /**
- * ion_map_dma - create a dma mapping for a given handle
+ * ion_share_dma_buf() - given an ion client, create a dma-buf fd
  * @client:	the client
- * @handle:	handle to map
- *
- * Return an sglist describing the given handle
+ * @handle:	the handle
  */
-struct scatterlist *ion_map_dma(struct ion_client *client,
-				struct ion_handle *handle,
-				unsigned long flags);
+int ion_share_dma_buf(struct ion_client *client, struct ion_handle *handle);
 
 /**
- * ion_unmap_dma() - destroy a dma mapping for a handle
+ * ion_import_dma_buf() - given an dma-buf fd from the ion exporter get handle
  * @client:	the client
- * @handle:	handle to unmap
- */
-void ion_unmap_dma(struct ion_client *client, struct ion_handle *handle);
-
-/**
- * ion_share() - given a handle, obtain a buffer to pass to other clients
- * @client:	the client
- * @handle:	the handle to share
+ * @fd:		the dma-buf fd
  *
- * Given a handle, return a buffer, which exists in a global name
- * space, and can be passed to other clients.  Should be passed into ion_import
- * to obtain a new handle for this buffer.
- *
- * NOTE: This function does do not an extra reference.  The burden is on the
- * caller to make sure the buffer doesn't go away while it's being passed to
- * another client.  That is, ion_free should not be called on this handle until
- * the buffer has been imported into the other client.
+ * Given an dma-buf fd that was allocated through ion via ion_share_dma_buf,
+ * import that fd and return a handle representing it.  If a dma-buf from
+ * another exporter is passed in this function will return ERR_PTR(-EINVAL)
  */
-struct ion_buffer *ion_share(struct ion_client *client,
-			     struct ion_handle *handle);
-
-/**
- * ion_import() - given an buffer in another client, import it
- * @client:	this blocks client
- * @buffer:	the buffer to import (as obtained from ion_share)
- *
- * Given a buffer, add it to the client and return the handle to use to refer
- * to it further.  This is called to share a handle from one kernel client to
- * another.
- */
-struct ion_handle *ion_import(struct ion_client *client,
-			      struct ion_buffer *buffer);
-
-/**
- * ion_import_fd() - given an fd obtained via ION_IOC_SHARE ioctl, import it
- * @client:	this blocks client
- * @fd:		the fd
- *
- * A helper function for drivers that will be recieving ion buffers shared
- * with them from userspace.  These buffers are represented by a file
- * descriptor obtained as the return from the ION_IOC_SHARE ioctl.
- * This function coverts that fd into the underlying buffer, and returns
- * the handle to use to refer to it further.
- */
-struct ion_handle *ion_import_fd(struct ion_client *client, int fd);
+struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
 
 /**
  * ion_handle_get_flags - get the flags for a given handle
@@ -482,22 +469,28 @@ void ion_unmap_iommu(struct ion_client *client, struct ion_handle *handle,
  *
  * @client - a client that has allocated from the heap heap_id
  * @heap_id - heap id to secure.
+ * @version - version of content protection
+ * @data - extra data needed for protection
  *
  * Secure a heap
  * Returns 0 on success
  */
-int ion_secure_heap(struct ion_device *dev, int heap_id);
+int ion_secure_heap(struct ion_device *dev, int heap_id, int version,
+			void *data);
 
 /**
  * ion_unsecure_heap - un-secure a heap
  *
  * @client - a client that has allocated from the heap heap_id
  * @heap_id - heap id to un-secure.
+ * @version - version of content protection
+ * @data - extra data needed for protection
  *
  * Un-secure a heap
  * Returns 0 on success
  */
-int ion_unsecure_heap(struct ion_device *dev, int heap_id);
+int ion_unsecure_heap(struct ion_device *dev, int heap_id, int version,
+			void *data);
 
 /**
  * msm_ion_secure_heap - secure a heap. Wrapper around ion_secure_heap.
@@ -520,6 +513,30 @@ int msm_ion_secure_heap(int heap_id);
 int msm_ion_unsecure_heap(int heap_id);
 
 /**
+ * msm_ion_secure_heap_2_0 - secure a heap using 2.0 APIs
+ *  Wrapper around ion_secure_heap.
+ *
+ * @heap_id - heap id to secure.
+ * @usage - usage hint to TZ
+ *
+ * Secure a heap
+ * Returns 0 on success
+ */
+int msm_ion_secure_heap_2_0(int heap_id, enum cp_mem_usage usage);
+
+/**
+ * msm_ion_unsecure_heap - unsecure a heap secured with 3.0 APIs.
+ * Wrapper around ion_unsecure_heap.
+ *
+ * @heap_id - heap id to secure.
+ * @usage - usage hint to TZ
+ *
+ * Un-secure a heap
+ * Returns 0 on success
+ */
+int msm_ion_unsecure_heap_2_0(int heap_id, enum cp_mem_usage usage);
+
+/**
  * msm_ion_do_cache_op - do cache operations.
  *
  * @client - pointer to ION client.
@@ -537,6 +554,11 @@ int msm_ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
 			void *vaddr, unsigned long len, unsigned int cmd);
 
 #else
+static inline void ion_reserve(struct ion_platform_data *data)
+{
+
+}
+
 static inline struct ion_client *ion_client_create(struct ion_device *dev,
 				     unsigned int heap_mask, const char *name)
 {
@@ -567,6 +589,12 @@ static inline int ion_phys(struct ion_client *client,
 	return -ENODEV;
 }
 
+static inline struct sg_table *ion_sg_table(struct ion_client *client,
+			      struct ion_handle *handle)
+{
+	return ERR_PTR(-ENODEV);
+}
+
 static inline void *ion_map_kernel(struct ion_client *client,
 	struct ion_handle *handle, unsigned long flags)
 {
@@ -576,29 +604,12 @@ static inline void *ion_map_kernel(struct ion_client *client,
 static inline void ion_unmap_kernel(struct ion_client *client,
 	struct ion_handle *handle) { }
 
-static inline struct scatterlist *ion_map_dma(struct ion_client *client,
-	struct ion_handle *handle, unsigned long flags)
+static inline int ion_share_dma_buf(struct ion_client *client, struct ion_handle *handle)
 {
-	return ERR_PTR(-ENODEV);
+	return -ENODEV;
 }
 
-static inline void ion_unmap_dma(struct ion_client *client,
-	struct ion_handle *handle) { }
-
-static inline struct ion_buffer *ion_share(struct ion_client *client,
-	struct ion_handle *handle)
-{
-	return ERR_PTR(-ENODEV);
-}
-
-static inline struct ion_handle *ion_import(struct ion_client *client,
-	struct ion_buffer *buffer)
-{
-	return ERR_PTR(-ENODEV);
-}
-
-static inline struct ion_handle *ion_import_fd(struct ion_client *client,
-	int fd)
+static inline struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd)
 {
 	return ERR_PTR(-ENODEV);
 }
@@ -627,13 +638,15 @@ static inline void ion_unmap_iommu(struct ion_client *client,
 	return;
 }
 
-static inline int ion_secure_heap(struct ion_device *dev, int heap_id)
+static inline int ion_secure_heap(struct ion_device *dev, int heap_id,
+					int version, void *data)
 {
 	return -ENODEV;
 
 }
 
-static inline int ion_unsecure_heap(struct ion_device *dev, int heap_id)
+static inline int ion_unsecure_heap(struct ion_device *dev, int heap_id,
+					int version, void *data)
 {
 	return -ENODEV;
 }
@@ -645,6 +658,17 @@ static inline int msm_ion_secure_heap(int heap_id)
 }
 
 static inline int msm_ion_unsecure_heap(int heap_id)
+{
+	return -ENODEV;
+}
+
+static inline int msm_ion_secure_heap_2_0(int heap_id, enum cp_mem_usage usage)
+{
+	return -ENODEV;
+}
+
+static inline int msm_ion_unsecure_heap_2_0(int heap_id,
+					enum cp_mem_usage usage)
 {
 	return -ENODEV;
 }
@@ -683,15 +707,6 @@ struct ion_allocation_data {
 	unsigned int flags;
 	struct ion_handle *handle;
 };
-
-struct ion_allocation_data34 {
-	size_t len;
-	size_t align;
-        unsigned int heap_mask;
-	unsigned int flags;
-	struct ion_handle *handle;
-};
-
 
 /**
  * struct ion_fd_data - metadata passed to/from userspace for a handle/fd pair
@@ -774,9 +789,6 @@ struct ion_flag_data {
 #define ION_IOC_ALLOC		_IOWR(ION_IOC_MAGIC, 0, \
 				      struct ion_allocation_data)
 
-#define ION_IOC_ALLOC34		_IOWR(ION_IOC_MAGIC, 0, \
-				      struct ion_allocation_data34)
-
 /**
  * DOC: ION_IOC_FREE - free memory
  *
@@ -813,7 +825,6 @@ struct ion_flag_data {
  * filed set to the corresponding opaque handle.
  */
 #define ION_IOC_IMPORT		_IOWR(ION_IOC_MAGIC, 5, int)
-#define ION_IOC_IMPORT34	_IOWR(ION_IOC_MAGIC, 5, struct ion_fd_data)
 
 /**
  * DOC: ION_IOC_CUSTOM - call architecture specific ion ioctl
@@ -831,10 +842,6 @@ struct ion_flag_data {
  */
 #define ION_IOC_CLEAN_CACHES	_IOWR(ION_IOC_MAGIC, 7, \
 						struct ion_flush_data)
-
-#define ION_IOC_CLEAN_CACHES34	_IOWR(ION_IOC_MAGIC, 20, \
-						struct ion_flush_data)
-
 /**
  * DOC: ION_MSM_IOC_INV_CACHES - invalidate the caches
  *
@@ -842,20 +849,12 @@ struct ion_flag_data {
  */
 #define ION_IOC_INV_CACHES	_IOWR(ION_IOC_MAGIC, 8, \
 						struct ion_flush_data)
-
-#define ION_IOC_INV_CACHES34	_IOWR(ION_IOC_MAGIC, 21, \
-						struct ion_flush_data)
-
 /**
  * DOC: ION_MSM_IOC_CLEAN_CACHES - clean and invalidate the caches
  *
  * Clean and invalidate the caches of the handle specified.
  */
 #define ION_IOC_CLEAN_INV_CACHES	_IOWR(ION_IOC_MAGIC, 9, \
-						struct ion_flush_data)
-
-
-#define ION_IOC_CLEAN_INV_CACHES34	_IOWR(ION_IOC_MAGIC, 22, \
 						struct ion_flush_data)
 
 /**
@@ -866,8 +865,4 @@ struct ion_flag_data {
  */
 #define ION_IOC_GET_FLAGS		_IOWR(ION_IOC_MAGIC, 10, \
 						struct ion_flag_data)
-
-#define ION_IOC_GET_FLAGS34		_IOWR(ION_IOC_MAGIC, 23, \
-						struct ion_flag_data)
-
 #endif /* _LINUX_ION_H */

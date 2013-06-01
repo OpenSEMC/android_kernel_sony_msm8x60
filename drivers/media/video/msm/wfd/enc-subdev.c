@@ -640,6 +640,7 @@ static long venc_set_codec_profile(struct video_client_ctx *client_ctx,
 	struct vcd_property_profile vcd_property_profile;
 	struct vcd_property_hdr vcd_property_hdr;
 	struct vcd_property_codec vcd_property_codec;
+	struct vcd_property_i_period vcd_property_i_period;
 	int rc = 0;
 
 	/* Validate params */
@@ -651,7 +652,7 @@ static long venc_set_codec_profile(struct video_client_ctx *client_ctx,
 	if (rc < 0) {
 		WFD_MSG_ERR("Error getting codec property");
 		rc = -EINVAL;
-		goto err;
+		goto err_set_profile;
 	}
 
 	if (!((vcd_property_codec.codec == VCD_CODEC_H264
@@ -661,7 +662,7 @@ static long venc_set_codec_profile(struct video_client_ctx *client_ctx,
 		WFD_MSG_ERR("Attempting to set %d for codec type %d",
 			codec, vcd_property_codec.codec);
 		rc = -EINVAL;
-		goto err;
+		goto err_set_profile;
 	}
 
 	/* Set property */
@@ -708,12 +709,31 @@ static long venc_set_codec_profile(struct video_client_ctx *client_ctx,
 				"not setting profile (%d)",
 				codec, profile);
 		rc = -ENOTSUPP;
-		goto err;
+		goto err_set_profile;
 	}
 
 	rc = vcd_set_property(client_ctx->vcd_handle,
 				&vcd_property_hdr, &vcd_property_profile);
-err:
+
+	/* Disable B-frames, since VSG doesn't support out of order i/p bufs */
+	vcd_property_hdr.prop_id = VCD_I_INTRA_PERIOD;
+	vcd_property_hdr.sz = sizeof(struct vcd_property_i_period);
+
+	rc = vcd_get_property(client_ctx->vcd_handle,
+				&vcd_property_hdr, &vcd_property_i_period);
+	if (rc) {
+		WFD_MSG_ERR("Error getting I-period property");
+		goto err_set_profile;
+	}
+	vcd_property_i_period.b_frames = 0;
+	rc = vcd_set_property(client_ctx->vcd_handle,
+				&vcd_property_hdr, &vcd_property_i_period);
+	if (rc) {
+		WFD_MSG_ERR("Error setting I-period property");
+		goto err_set_profile;
+	}
+
+err_set_profile:
 	return rc;
 }
 
@@ -1600,6 +1620,146 @@ get_multislicing_mode_fail:
 	return rc;
 }
 
+static long venc_set_entropy_mode(struct video_client_ctx *client_ctx,
+		__s32 value)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	struct vcd_property_entropy_control entropy_control;
+	int rc = 0;
+
+	if (!client_ctx) {
+		WFD_MSG_ERR("Invalid parameters\n");
+		rc = -EINVAL;
+		goto set_entropy_mode_fail;
+	}
+
+	vcd_property_hdr.prop_id = VCD_I_ENTROPY_CTRL;
+	vcd_property_hdr.sz = sizeof(entropy_control);
+
+	switch (value) {
+	case V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC:
+		entropy_control.entropy_sel = VCD_ENTROPY_SEL_CAVLC;
+		break;
+	case V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC:
+		entropy_control.entropy_sel = VCD_ENTROPY_SEL_CABAC;
+		entropy_control.cabac_model = VCD_CABAC_MODEL_NUMBER_0;
+		break;
+	default:
+		WFD_MSG_ERR("Entropy type %d not supported\n", value);
+		rc = -ENOTSUPP;
+		goto set_entropy_mode_fail;
+	}
+	rc = vcd_set_property(client_ctx->vcd_handle, &vcd_property_hdr,
+			&entropy_control);
+	if (rc) {
+		WFD_MSG_ERR("Failed to set entropy mode\n");
+		goto set_entropy_mode_fail;
+	}
+
+set_entropy_mode_fail:
+	return rc;
+}
+
+static long venc_get_entropy_mode(struct video_client_ctx *client_ctx,
+		__s32 *value)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	struct vcd_property_entropy_control entropy_control;
+	int rc = 0;
+
+	if (!client_ctx || !value) {
+		WFD_MSG_ERR("Invalid parameters\n");
+		rc = -EINVAL;
+		goto get_entropy_mode_fail;
+	}
+
+	vcd_property_hdr.prop_id = VCD_I_ENTROPY_CTRL;
+	vcd_property_hdr.sz = sizeof(entropy_control);
+
+	rc = vcd_get_property(client_ctx->vcd_handle, &vcd_property_hdr,
+			&entropy_control);
+
+	if (rc) {
+		WFD_MSG_ERR("Failed to get entropy mode\n");
+		goto get_entropy_mode_fail;
+	}
+
+	switch (entropy_control.entropy_sel) {
+	case VCD_ENTROPY_SEL_CAVLC:
+		*value = V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC;
+		break;
+	case VCD_ENTROPY_SEL_CABAC:
+		*value = V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC;
+		break;
+	default:
+		WFD_MSG_ERR("Entropy type %d not known\n",
+				entropy_control.entropy_sel);
+		rc = -EINVAL;
+		goto get_entropy_mode_fail;
+	}
+get_entropy_mode_fail:
+	return rc;
+}
+
+static long venc_set_cyclic_intra_refresh_mb(
+		struct video_client_ctx *client_ctx,
+		__s32 value)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	struct vcd_property_intra_refresh_mb_number cir_mb_num;
+	int rc = 0;
+
+	if (!client_ctx) {
+		WFD_MSG_ERR("Invalid parameters\n");
+		rc = -EINVAL;
+		goto set_cir_mbs_fail;
+	}
+
+	vcd_property_hdr.prop_id = VCD_I_INTRA_REFRESH;
+	vcd_property_hdr.sz = sizeof(cir_mb_num);
+
+	cir_mb_num.cir_mb_number = value;
+
+	rc = vcd_set_property(client_ctx->vcd_handle, &vcd_property_hdr,
+			&cir_mb_num);
+	if (rc) {
+		WFD_MSG_ERR("Failed to set CIR MBs\n");
+		goto set_cir_mbs_fail;
+	}
+
+set_cir_mbs_fail:
+	return rc;
+}
+
+static long venc_get_cyclic_intra_refresh_mb(
+		struct video_client_ctx *client_ctx,
+		__s32 *value)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	struct vcd_property_intra_refresh_mb_number cir_mb_num;
+	int rc = 0;
+
+	if (!client_ctx || !value) {
+		WFD_MSG_ERR("Invalid parameters\n");
+		rc = -EINVAL;
+		goto get_cir_mbs_fail;
+	}
+
+	vcd_property_hdr.prop_id = VCD_I_INTRA_REFRESH;
+	vcd_property_hdr.sz = sizeof(cir_mb_num);
+
+	rc = vcd_get_property(client_ctx->vcd_handle, &vcd_property_hdr,
+			&cir_mb_num);
+	if (rc) {
+		WFD_MSG_ERR("Failed to set CIR MBs\n");
+		goto get_cir_mbs_fail;
+	}
+
+	*value = cir_mb_num.cir_mb_number;
+
+get_cir_mbs_fail:
+	return rc;
+}
 static long venc_set_input_buffer(struct v4l2_subdev *sd, void *arg)
 {
 	struct mem_region *mregion = arg;
@@ -1787,10 +1947,7 @@ static long venc_alloc_recon_buffers(struct v4l2_subdev *sd, void *arg)
 		goto err;
 	}
 	flags = ION_HEAP(ION_CP_MM_HEAP_ID);
-	if (inst->secure)
-		flags |= ION_SECURE;
-	else
-		flags |= ION_HEAP(ION_IOMMU_HEAP_ID);
+	flags |= inst->secure ? ION_SECURE : ION_HEAP(ION_IOMMU_HEAP_ID);
 
 	if (vcd_get_ion_status()) {
 		for (i = 0; i < 4; ++i) {
@@ -1807,13 +1964,33 @@ static long venc_alloc_recon_buffers(struct v4l2_subdev *sd, void *arg)
 				client_ctx->user_ion_client,
 				client_ctx->recon_buffer_ion_handle[i],	0);
 
-			rc = ion_map_iommu(client_ctx->user_ion_client,
-				client_ctx->recon_buffer_ion_handle[i],
-				VIDEO_DOMAIN, VIDEO_MAIN_POOL, SZ_4K,
-				0, &phy_addr, (unsigned long *)&len, 0, 0);
-			if (rc) {
-				WFD_MSG_ERR("Failed to allo recon buffers\n");
-				break;
+			if (IS_ERR_OR_NULL(ctrl->kernel_virtual_addr)) {
+				WFD_MSG_ERR("ion map kernel failed\n");
+				rc = -EINVAL;
+				goto free_ion_alloc;
+			}
+
+			if (inst->secure) {
+				rc = ion_phys(client_ctx->user_ion_client,
+					client_ctx->recon_buffer_ion_handle[i],
+					&phy_addr, (size_t *)&len);
+				if (rc || !phy_addr) {
+					WFD_MSG_ERR("ion physical failed\n");
+					goto unmap_ion_alloc;
+				}
+			} else {
+				rc = ion_map_iommu(client_ctx->user_ion_client,
+					client_ctx->recon_buffer_ion_handle[i],
+					VIDEO_DOMAIN, VIDEO_MAIN_POOL, SZ_4K,
+					0, &phy_addr, (unsigned long *)&len,
+					0, 0);
+				 if (rc || !phy_addr) {
+					WFD_MSG_ERR(
+						"ion map iommu failed, rc = %d, phy_addr = 0x%lx\n",
+						rc, phy_addr);
+					goto unmap_ion_alloc;
+				}
+
 			}
 			ctrl->physical_addr =  (u8 *) phy_addr;
 			ctrl->dev_addr = ctrl->physical_addr;
@@ -1824,13 +2001,36 @@ static long venc_alloc_recon_buffers(struct v4l2_subdev *sd, void *arg)
 					&vcd_property_hdr, ctrl);
 			if (rc) {
 				WFD_MSG_ERR("Failed to set recon buffers\n");
-				break;
+				goto unmap_ion_iommu;
 			}
 		}
 	} else {
 		WFD_MSG_ERR("PMEM not suported\n");
 		return -ENOMEM;
 	}
+	return rc;
+unmap_ion_iommu:
+	if (!inst->secure) {
+		if (client_ctx->recon_buffer_ion_handle[i]) {
+			ion_unmap_iommu(client_ctx->user_ion_client,
+				client_ctx->recon_buffer_ion_handle[i],
+				VIDEO_DOMAIN, VIDEO_MAIN_POOL);
+		}
+	}
+unmap_ion_alloc:
+	if (client_ctx->recon_buffer_ion_handle[i]) {
+		ion_unmap_kernel(client_ctx->user_ion_client,
+			client_ctx->recon_buffer_ion_handle[i]);
+		ctrl->kernel_virtual_addr = NULL;
+		ctrl->physical_addr = NULL;
+	}
+free_ion_alloc:
+	if (client_ctx->recon_buffer_ion_handle[i]) {
+		ion_free(client_ctx->user_ion_client,
+			client_ctx->recon_buffer_ion_handle[i]);
+		client_ctx->recon_buffer_ion_handle[i] = NULL;
+	}
+	WFD_MSG_ERR("Failed to allo recon buffers\n");
 err:
 	return rc;
 }
@@ -1958,10 +2158,14 @@ static long venc_free_recon_buffers(struct v4l2_subdev *sd, void *arg)
 			if (rc)
 				WFD_MSG_ERR("Failed to free recon buffer\n");
 
-			if (client_ctx->recon_buffer_ion_handle[i]) {
-				ion_unmap_iommu(client_ctx->user_ion_client,
-					 client_ctx->recon_buffer_ion_handle[i],
-					 VIDEO_DOMAIN, VIDEO_MAIN_POOL);
+			if (IS_ERR_OR_NULL(
+				client_ctx->recon_buffer_ion_handle[i])) {
+				if (!inst->secure) {
+					ion_unmap_iommu(
+					client_ctx->user_ion_client,
+					client_ctx->recon_buffer_ion_handle[i],
+					VIDEO_DOMAIN, VIDEO_MAIN_POOL);
+				}
 				ion_unmap_kernel(client_ctx->user_ion_client,
 					client_ctx->recon_buffer_ion_handle[i]);
 				ion_free(client_ctx->user_ion_client,
@@ -2020,14 +2224,20 @@ static long venc_set_property(struct v4l2_subdev *sd, void *arg)
 	case V4L2_CID_MPEG_VIDEO_HEADER_MODE:
 		rc = venc_set_header_mode(client_ctx, ctrl->value);
 		break;
-	case V4L2_CID_MPEG_QCOM_SET_PERF_LEVEL:
-		rc = venc_set_max_perf_level(client_ctx, ctrl->value);
-		break;
 	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_BYTES:
 	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB:
 	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE:
 		rc = venc_set_multislicing_mode(client_ctx, ctrl->id,
 				ctrl->value);
+		break;
+	case V4L2_CID_MPEG_QCOM_SET_PERF_LEVEL:
+		rc = venc_set_max_perf_level(client_ctx, ctrl->value);
+		break;
+	case V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE:
+		rc = venc_set_entropy_mode(client_ctx, ctrl->value);
+		break;
+	case V4L2_CID_MPEG_VIDEO_CYCLIC_INTRA_REFRESH_MB:
+		rc = venc_set_cyclic_intra_refresh_mb(client_ctx, ctrl->value);
 		break;
 	default:
 		WFD_MSG_ERR("Set property not suported: %d\n", ctrl->id);
@@ -2087,6 +2297,12 @@ static long venc_get_property(struct v4l2_subdev *sd, void *arg)
 	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE:
 		rc = venc_get_multislicing_mode(client_ctx, ctrl->id,
 				&ctrl->value);
+		break;
+	case V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE:
+		rc = venc_get_entropy_mode(client_ctx, &ctrl->value);
+		break;
+	case V4L2_CID_MPEG_VIDEO_CYCLIC_INTRA_REFRESH_MB:
+		rc = venc_get_cyclic_intra_refresh_mb(client_ctx, &ctrl->value);
 		break;
 	default:
 		WFD_MSG_ERR("Get property not suported: %d\n", ctrl->id);

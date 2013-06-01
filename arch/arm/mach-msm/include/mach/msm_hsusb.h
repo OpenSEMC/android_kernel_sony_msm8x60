@@ -20,7 +20,9 @@
 #define __ASM_ARCH_MSM_HSUSB_H
 
 #include <linux/types.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
+#include <linux/usb/ch9.h>
+#include <linux/usb/gadget.h>
 
 #define PHY_TYPE_MASK		0x0F
 #define PHY_TYPE_MODE		0xF0
@@ -60,6 +62,21 @@
 #define phy_id_state_b(ints)	(phy_id_state((ints)) == PHY_ID_B)
 #define phy_id_state_c(ints)	(phy_id_state((ints)) == PHY_ID_C)
 #endif
+
+/*
+ * The following are bit fields describing the usb_request.udc_priv word.
+ * These bit fields are set by function drivers that wish to queue
+ * usb_requests with sps/bam parameters.
+ */
+#define MSM_PIPE_ID_MASK		(0x1F)
+#define MSM_TX_PIPE_ID_OFS		(16)
+#define MSM_SPS_MODE			BIT(5)
+#define MSM_IS_FINITE_TRANSFER		BIT(6)
+#define MSM_PRODUCER			BIT(7)
+#define MSM_DISABLE_WB			BIT(8)
+#define MSM_ETD_IOC			BIT(9)
+#define MSM_INTERNAL_MEM		BIT(10)
+#define MSM_VENDOR_ID			BIT(16)
 
 /* used to detect the OTG Mode */
 enum otg_mode {
@@ -126,6 +143,7 @@ struct msm_hsusb_gadget_platform_data {
 
 	int self_powered;
 	int is_phy_status_timer_on;
+	bool prop_chg;
 };
 
 struct msm_otg_platform_data {
@@ -180,7 +198,7 @@ struct msm_otg_platform_data {
 	int (*chg_is_initialized)(void);
 	int (*is_cradle_connected)(void);
 
-	struct pm_qos_request_list pm_qos_req_dma;
+	struct pm_qos_request pm_qos_req_dma;
 	unsigned chg_drawable_ida;
 };
 
@@ -192,5 +210,9 @@ struct msm_usb_host_platform_data {
 	int  (*vbus_init)(int init);
 	struct clk *ebi1_clk;
 };
+
+int msm_ep_config(struct usb_ep *ep);
+int msm_ep_unconfig(struct usb_ep *ep);
+int msm_data_fifo_config(struct usb_ep *ep, u32 addr, u32 size);
 
 #endif

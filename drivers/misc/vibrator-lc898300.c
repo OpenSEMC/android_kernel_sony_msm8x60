@@ -7,7 +7,6 @@
  * Authors: Ardiana Karppinen <ardiana.karppinen@sonyericsson.com>
  *          Stefan Karlsson <stefan3.karlsson@sonyericsson.com>
  *          Yevgen Pronenko <yevgen.pronenko@sonymobile.com>
- *          Aleksej Makarov <aleksej.makarov@sonymobile.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,20 +29,13 @@
 
 #define LC898300_REG_HBPW       0x01
 #define LC898300_REG_RESOFRQ    0x02
-#define LC898300_REG_STARTUP    0x03
-#define LC898300_REG_BRAKE      0x04
-#define LC898300_MIN_ON         8
-#define LC898300_OFF_DELAY      10
-#define LC898300_BRAKE_TIME     40
+#define LC898300_MIN_ON      10
 
-static unsigned long intensity;
-static int gIntensity = VIB_CMD_PWM_8_15;
-
-enum vib_state {
-	VIB_OFF,
-	VIB_TAKE_OFF,
-	VIB_ON,
-	VIB_LANDING,
+enum vib_cmd_conf {
+	VIB_CMD_PROBE,
+	VIB_CMD_SUSPEND,
+	VIB_CMD_RESUME,
+	VIB_CMD_REMOVE,
 };
 
 struct lc898300_data {
@@ -52,13 +44,10 @@ struct lc898300_data {
 	struct lc898300_platform_data *pdata;
 	struct timed_output_dev timed_dev;
 	struct hrtimer vib_timer;
-	struct mutex lock;
-	int on_time;
-	enum vib_state on;
-	bool hw_on;
+	spinlock_t lock;
+	bool suspended;
+	bool on;
 };
-
-static int lc898300_set_intensity(struct lc898300_data *data, int val);
 
 static const struct i2c_device_id lc898300_id[] = {
 	{ LC898300_I2C_NAME, 0 },
@@ -67,212 +56,109 @@ static const struct i2c_device_id lc898300_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, lc898300_id);
 
-static void start_timer(struct lc898300_data *data, int t)
+static void vib_on(struct lc898300_data *data)
 {
-	dev_dbg(data->dev, "%s: start timer for %d ms\n", __func__, t);
-	hrtimer_start(&data->vib_timer, ktime_set(t / MSEC_PER_SEC,
-		(t % MSEC_PER_SEC) * NSEC_PER_MSEC), HRTIMER_MODE_REL);
+	if (!data->pdata->en_gpio_setup(true))
+		data->on = true;
+	else
+		dev_err(data->dev, "Failed to set enable pin\n");
 }
 
-static void forward_timer(struct lc898300_data *data, int t)
+static void vib_off(struct lc898300_data *data)
 {
-	dev_dbg(data->dev, "%s: fwd timer for %d ms\n", __func__, t);
-	hrtimer_forward_now(&data->vib_timer, ktime_set(t / MSEC_PER_SEC,
-		(t % MSEC_PER_SEC) * NSEC_PER_MSEC));
-}
-
-static void start_landing(struct lc898300_data *data)
-{
-	dev_dbg(data->dev, "%s: start braking\n", __func__);
-	if (data->pdata->en_gpio_setup(false))
+	if (!data->pdata->en_gpio_setup(false))
+		data->on = false;
+	else
 		dev_err(data->dev, "Failed to unset enable pin\n");
-}
-
-static void take_off(struct lc898300_data *data)
-{
-	dev_dbg(data->dev, "%s: taking off\n", __func__);
-	if (data->pdata->en_gpio_setup(true))
-		dev_err(data->dev, "Failed to set enable\n");
-}
-
-static int setup_hw(struct lc898300_data *data, bool enable)
-{
-	int rc = data->pdata->rstb_gpio_setup(enable);
-
-	dev_dbg(data->dev, "%s: enable %d\n", __func__, enable);
-	if (rc) {
-		dev_err(data->dev, "Failed to set reset pin\n");
-		return rc;
-	}
-	data->hw_on = enable;
-	if (!enable)
-		return 0;
-
-	/* set intensity */
-	udelay(200);
-	rc = lc898300_set_intensity(data, gIntensity);
-	if (rc) {
-		dev_err(data->dev, "Failed to setup vibrator; rc = %d\n", rc);
-		data->hw_on = false;
-		data->pdata->rstb_gpio_setup(false);
-	}
-	return rc;
-}
-
-static void vib_on(struct lc898300_data *data, int t)
-{
-	int rc;
-	int remain;
-
-	rc = hrtimer_cancel(&data->vib_timer);
-	remain = rc ? ktime_to_ms(hrtimer_get_remaining(&data->vib_timer)) : -1;
-	dev_dbg(data->dev, "%s: state %d, timer active %d, remaining %d ms\n",
-		__func__, data->on, rc, remain);
-	if (remain <= 0)
-		/* add 1 ms to cmoplete the acion */
-		remain = 1;
-	switch (data->on) {
-	case VIB_OFF:
-		dev_dbg(data->dev, "%s: take off now!\n", __func__);
-		if (!data->hw_on && setup_hw(data, true))
-			break;
-		take_off(data);
-		data->on = VIB_TAKE_OFF;
-		data->on_time = t - LC898300_MIN_ON;
-		start_timer(data, LC898300_MIN_ON);
-		break;
-	case VIB_TAKE_OFF:
-		data->on_time = t - remain;
-		dev_dbg(data->dev, "%s: is taking off, set time\n", __func__);
-		start_timer(data, remain);
-		break;
-	case VIB_ON:
-		dev_dbg(data->dev, "%s: is running, add time\n", __func__);
-		start_timer(data, t);
-		break;
-	case VIB_LANDING:
-		data->on_time = t;
-		dev_dbg(data->dev, "%s: is landing, add time\n", __func__);
-		start_timer(data, remain);
-		break;
-	}
-}
-
-static enum hrtimer_restart vibrator_timer_func(struct hrtimer *timer)
-{
-	enum hrtimer_restart ret;
-	struct lc898300_data *data = container_of(timer, struct lc898300_data,
-			vib_timer);
-	int t;
-
-	dev_dbg(data->dev, "%s: state %d\n", __func__, data->on);
-	switch (data->on) {
-	case VIB_TAKE_OFF:
-		if (data->on_time > 0) {
-			data->on = VIB_ON;
-			t = data->on_time;
-			data->on_time = 0;
-			dev_dbg(data->dev, "%s: full speed now!\n", __func__);
-		} else {
-			data->on = VIB_LANDING;
-			start_landing(data);
-			t = LC898300_BRAKE_TIME;
-		}
-		break;
-	case VIB_ON:
-		if (data->on_time > 0) {
-			t = data->on_time;
-			dev_dbg(data->dev, "%s: run for more time\n", __func__);
-			data->on_time = 0;
-		} else {
-			data->on = VIB_LANDING;
-			start_landing(data);
-			t = LC898300_BRAKE_TIME;
-		}
-		break;
-	case VIB_LANDING:
-		if (data->on_time > 0) {
-			dev_dbg(data->dev, "%s: landing done," \
-					"but take off again\n", __func__);
-			take_off(data);
-			data->on = VIB_TAKE_OFF;
-			t = LC898300_MIN_ON;
-			data->on_time -= LC898300_MIN_ON;
-		} else {
-			data->on = VIB_OFF;
-			t = 0;
-			dev_dbg(data->dev, "%s: landing done, off\n", __func__);
-			(void)setup_hw(data, false);
-		}
-		break;
-	default:
-	case VIB_OFF:
-		dev_err(data->dev, "%s: shouldn't happen\n", __func__);
-		t = 0;
-		break;
-	}
-
-	if (t > 0) {
-		forward_timer(data, t);
-		ret = HRTIMER_RESTART;
-	} else
-		ret = HRTIMER_NORESTART;
-	return ret;
-}
-
-static void request_vib_off(struct lc898300_data *data)
-{
-	int rc;
-	int remain;
-
-	rc = hrtimer_cancel(&data->vib_timer);
-	remain = rc ? ktime_to_ms(hrtimer_get_remaining(&data->vib_timer)) : -1;
-
-	dev_dbg(data->dev, "%s: state %d, timer active %d, remaining %d ms\n",
-		__func__, data->on, rc, remain);
-
-	if (remain <= 0)
-		/* add 1 ms to complete the acion */
-		remain = 1;
-
-	switch (data->on) {
-	case VIB_TAKE_OFF:
-		dev_dbg(data->dev, "%s: killed on take-off\n", __func__);
-		data->on_time = LC898300_OFF_DELAY - remain;
-		start_timer(data, remain);
-		break;
-
-	case VIB_ON:
-		dev_dbg(data->dev, "%s: killed while active\n", __func__);
-		data->on_time = 0;
-		start_timer(data, LC898300_OFF_DELAY);
-		break;
-
-	case VIB_LANDING:
-		dev_dbg(data->dev, "%s: killed while landing\n", __func__);
-		data->on_time = 0;
-		start_timer(data, remain);
-		break;
-	case VIB_OFF:
-	default:
-		dev_dbg(data->dev, "%s: not active\n", __func__);
-		break;
-	}
 }
 
 static void lc898300_vib_enable(struct timed_output_dev *dev, int value)
 {
 	struct lc898300_data *data = container_of(dev, struct lc898300_data,
 					 timed_dev);
+	unsigned long flags;
 
-	dev_dbg(data->dev, "%s: %d msec\n", __func__, value);
+	spin_lock_irqsave(&data->lock, flags);
+	if (data->suspended)
+		goto out;
+	hrtimer_cancel(&data->vib_timer);
 
-	mutex_lock(&data->lock);
-	if (value)
-		vib_on(data, value);
-	else
-		request_vib_off(data);
-	mutex_unlock(&data->lock);
+	if (value >= 0 && value < LC898300_MIN_ON) {
+		if (value != 0 || data->on) {
+			if (!data->on)
+				vib_on(data);
+			hrtimer_start(&data->vib_timer,
+				ktime_set(0, LC898300_MIN_ON *
+					NSEC_PER_MSEC),	HRTIMER_MODE_REL);
+		}
+	} else if (value > LC898300_MIN_ON) {
+		if (!data->on)
+			vib_on(data);
+		hrtimer_start(&data->vib_timer,
+			ktime_set(value / MSEC_PER_SEC, (value % MSEC_PER_SEC)
+					* NSEC_PER_MSEC), HRTIMER_MODE_REL);
+	}
+out:
+	spin_unlock_irqrestore(&data->lock, flags);
+}
+
+static int lc898300_configure(struct lc898300_data *data, int val)
+{
+	struct lc898300_platform_data *pdata = data->pdata;
+	struct lc898300_vib_cmd *vib_cmd_info = pdata->vib_cmd_info;
+	int rc = 0;
+	unsigned long flags;
+
+	if (val == VIB_CMD_PROBE || val == VIB_CMD_RESUME) {
+		if (val == VIB_CMD_PROBE) {
+			rc = pdata->gpio_allocate(data->dev);
+			if (rc)
+				return rc;
+			rc = pdata->power_config(data->dev, true);
+			if (rc)
+				goto error1;
+		}
+		rc = pdata->power_enable(data->dev, true);
+		if (rc)
+			goto error2;
+
+		if(pdata->rstb_gpio_setup(true))
+			dev_err(data->dev, "Failed to set reset pin\n");
+
+		spin_lock_irqsave(&data->lock, flags);
+		data->suspended = false;
+		spin_unlock_irqrestore(&data->lock, flags);
+
+		udelay(200);
+		rc = i2c_smbus_write_byte_data(data->client, LC898300_REG_HBPW,
+					vib_cmd_info->vib_cmd_intensity);
+
+		rc = rc ? rc : i2c_smbus_write_byte_data(data->client,
+					LC898300_REG_RESOFRQ,
+					vib_cmd_info->vib_cmd_resonance);
+	} else if (val == VIB_CMD_REMOVE || val == VIB_CMD_SUSPEND) {
+		spin_lock_irqsave(&data->lock, flags);
+		hrtimer_cancel(&data->vib_timer);
+		vib_off(data);
+		data->suspended = true;
+		spin_unlock_irqrestore(&data->lock, flags);
+
+		if(pdata->rstb_gpio_setup(false))
+			dev_err(data->dev, "Failed to unset reset pin\n");
+		pdata->power_enable(data->dev, false);
+		if (val == VIB_CMD_REMOVE) {
+			pdata->gpio_release(data->dev);
+			pdata->power_config(data->dev, false);
+		}
+	}
+
+	return rc;
+
+error2:
+	pdata->power_config(data->dev, false);
+error1:
+	pdata->gpio_release(data->dev);
+	return rc;
 }
 
 static int lc898300_vib_get_time(struct timed_output_dev *dev)
@@ -289,80 +175,19 @@ static int lc898300_vib_get_time(struct timed_output_dev *dev)
 	}
 }
 
-static ssize_t attr_intensity_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static enum hrtimer_restart vibrator_timer_func(struct hrtimer *timer)
 {
-	int count;
-
-	count = sprintf(buf, "%d\n", gIntensity);
-	pr_info("[lc898300] current intensity: %d\n", gIntensity);
-
-	return count;
-}
-
-ssize_t attr_intensity_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	if (kstrtoul(buf, 0, &intensity))
-		pr_err("[lc898300] error while storing new intensity\n");
-
-	/* make sure new intensity is in range */
-	if(intensity > VIB_CMD_PWM_15_15) {
-		intensity = VIB_CMD_PWM_15_15;
-	} else if (intensity < VIB_CMD_PWM_OFF) {
-		intensity = VIB_CMD_PWM_OFF;
-	}
-	gIntensity = intensity;
-	pr_info("[lc898300] new intensity: %d\n", gIntensity);
-
-	return size;
-}
-
-static int lc898300_set_intensity(struct lc898300_data *data, int val)
-{
-	struct lc898300_platform_data *pdata = data->pdata;
-	struct lc898300_vib_cmd *vib_cmd_info = pdata->vib_cmd_info;
-	int rc = 0;
-
-	vib_cmd_info->vib_cmd_intensity = val;
-	rc = i2c_smbus_write_i2c_block_data(data->client, LC898300_REG_HBPW, 4,
-					&vib_cmd_info->vib_cmd_intensity);
-
-	if (rc)
-		dev_err(data->dev, "Failed to set intensity\n");
-
-	return rc;
-}
-
-static struct device_attribute attributes[] = {
-	__ATTR(intensity, 0660,
-		attr_intensity_show, attr_intensity_store),
-};
-
-static int lc898300_create_sysfs_interfaces(struct device *dev)
-{
-	int i;
-	int result;
-
-	for (i = 0; i < ARRAY_SIZE(attributes); i++) {
-		result = device_create_file(dev, &attributes[i]);
-		if (result) {
-			for (; i >= 0; i--)
-				device_remove_file(dev, &attributes[i]);
-			dev_err(dev, "%s(): Failed to create sysfs I/F\n", __func__);
-			return result;
-		}
-	}
-
-	return result;
+	struct lc898300_data *data = container_of(timer, struct lc898300_data,
+							 vib_timer);
+	vib_off(data);
+	return HRTIMER_NORESTART;
 }
 
 static int __devinit lc898300_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	struct lc898300_data *data;
-	int rc, rcsfs;
+	int rc;
 
 	if (!i2c_check_functionality(client->adapter,
 				I2C_FUNC_SMBUS_BYTE_DATA))
@@ -378,20 +203,17 @@ static int __devinit lc898300_probe(struct i2c_client *client,
 	data->client = client;
 	data->dev    = &client->dev;
 	data->pdata  = client->dev.platform_data;
+	data->suspended = false;
 	data->on = false;
-	mutex_init(&data->lock);
 
 	i2c_set_clientdata(client, data);
 
-	rc = data->pdata->gpio_allocate(data->dev);
-	if (rc)
+	rc = lc898300_configure(data, VIB_CMD_PROBE);
+	if (rc) {
+		dev_err(&client->dev, "Configure failed rc = %d\n", rc);
 		goto error;
-	rc = data->pdata->power_config(data->dev, true);
-	if (rc)
-		goto error_gpio_release;
-	rc = data->pdata->power_enable(data->dev, true);
-	if (rc)
-		goto error_power_release;
+	}
+
 	hrtimer_init(&data->vib_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	data->vib_timer.function = vibrator_timer_func;
 
@@ -403,17 +225,7 @@ static int __devinit lc898300_probe(struct i2c_client *client,
 	if (rc < 0)
 		goto error;
 
-	rcsfs = lc898300_create_sysfs_interfaces(&client->dev);
-	if (rcsfs) {
-		dev_err(&data->client->dev, "%s(): create sysfs failed", __func__);
-	}
-
 	return rc;
-
-error_power_release:
-	data->pdata->power_config(data->dev, false);
-error_gpio_release:
-	data->pdata->gpio_release(data->dev);
 
 error:
 	i2c_set_clientdata(client, NULL);
@@ -424,50 +236,38 @@ error:
 static int __devexit lc898300_remove(struct i2c_client *client)
 {
 	struct lc898300_data *data = i2c_get_clientdata(client);
-	struct lc898300_platform_data *pdata = data->pdata;
 
-	timed_output_dev_unregister(&data->timed_dev);
+	lc898300_configure(data, VIB_CMD_REMOVE);
 	hrtimer_cancel(&data->vib_timer);
-	data->pdata->en_gpio_setup(false);
-	data->pdata->rstb_gpio_setup(false);
-	pdata->power_enable(data->dev, false);
-	pdata->gpio_release(data->dev);
+	timed_output_dev_unregister(&data->timed_dev);
 	kfree(data);
 	i2c_set_clientdata(client, NULL);
 
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int lc898300_pm_resume(struct device *dev)
+static int lc898300_resume(struct device *dev)
 {
 	struct lc898300_data *data = dev_get_drvdata(dev);
-	int rc = data->pdata->power_enable(data->dev, true);
-	dev_dbg(dev, "%s\n", __func__);
-	if (rc)
-		dev_err(data->dev, "Failed to power on\n");
-	return rc ? -EAGAIN : 0;
+	int rc;
+	rc = lc898300_configure(data, VIB_CMD_RESUME);
+
+	return rc;
 }
 
-static int lc898300_pm_suspend(struct device *dev)
+static int lc898300_suspend(struct device *dev)
 {
 	struct lc898300_data *data = dev_get_drvdata(dev);
 	int rc;
 
-	dev_dbg(dev, "%s\n", __func__);
-	hrtimer_cancel(&data->vib_timer);
-	data->on = VIB_OFF;
-	data->pdata->en_gpio_setup(false);
-	(void)setup_hw(data, false);
-	rc = data->pdata->power_enable(data->dev, false);
-	if (rc)
-		dev_err(data->dev, "Failed to power off\n");
-	return rc ? -EAGAIN : 0;
+	rc = lc898300_configure(data, VIB_CMD_SUSPEND);
+
+	return rc;
 }
-#endif
 
 static const struct dev_pm_ops lc898300_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(lc898300_pm_suspend, lc898300_pm_resume)
+	.suspend = lc898300_suspend,
+	.resume = lc898300_resume,
 };
 
 static struct i2c_driver lc898300_driver = {
@@ -491,8 +291,7 @@ static void __exit lc898300_exit(void)
 	i2c_del_driver(&lc898300_driver);
 }
 
-MODULE_AUTHOR("Ardiana Karppinen <ardiana.karppinen@sonyericsson.com>, " \
-"Stefan Karlsson <stefan3.karlsson@sonyericsson.com");
+MODULE_AUTHOR("Ardiana Karppinen <ardiana.karppinen@sonyericsson.com>, Stefan Karlsson <stefan3.karlsson@sonyericsson.com");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("LC898300 Linear Vibrator");
 

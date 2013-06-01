@@ -1,6 +1,7 @@
 /* kernel/drivers/misc/battery_chargalg.c
  *
  * Copyright (C) 2010-2012 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * Author: Imre Sunyi <imre.sunyi@sonyericsson.com>
  *
@@ -35,7 +36,7 @@
 #define CURRENT_CONTROL_CHECK_TIME_S 1
 #define ALGORITHM_UPDATE_TIME_S 10
 #define TURN_ON_RETRY_COUNT_MAX 5
-#define SHUTDOWN_CHECK_TIME_S 10
+#define SHUTDOWN_CHECK_TIME_S 30
 
 #define NO_CHG   0x00
 #define USB_CHG  0x01
@@ -100,6 +101,7 @@ struct safety_timer_data {
 struct check_data {
 	struct delayed_work work;
 	u8 check_active;
+	u8 need_recharge;
 	u8 active;
 	u8 hits;
 };
@@ -845,6 +847,7 @@ static void battery_chargalg_check_eoc(struct battery_chargalg_driver *alg)
 		if (POWER_SUPPLY_CAPACITY_LEVEL_FULL == alg->batt_cap_level &&
 		    !alg->eoc.active) {
 			alg->eoc.active = 1;
+			alg->eoc.need_recharge = 0;
 			dev_info(alg->dev,
 				 "Battery fully charged says fuelgauge!\n");
 		}
@@ -1033,23 +1036,25 @@ static void battery_chargalg_check_shutdown(
 			struct battery_chargalg_driver *alg)
 {
 	MUTEX_LOCK(&alg->lock);
-	if (alg->batt_cap) {
+	if (!alg->batt_cap &&
+	    alg->batt_status == POWER_SUPPLY_STATUS_CHARGING) {
+		if (alg->shutdown.check_active) {
+			MUTEX_UNLOCK(&alg->lock);
+			return;
+		}
+	} else {
 		if (alg->shutdown.check_active) {
 			alg->shutdown.check_active = 0;
 			cancel_delayed_work(&alg->shutdown.work);
 		}
 		MUTEX_UNLOCK(&alg->lock);
 		return;
-	} else {
-		if (alg->shutdown.check_active) {
-			MUTEX_UNLOCK(&alg->lock);
-			return;
-		}
 	}
 	alg->shutdown.check_active = 1;
 	MUTEX_UNLOCK(&alg->lock);
 
-	dev_info(alg->dev, "Detect battery capacity is 0\n");
+	dev_info(alg->dev, "Detect battery capacity is 0(status=%d)\n",
+		alg->batt_status);
 	schedule_delayed_work(&alg->shutdown.work, SHUTDOWN_CHECK_TIME_S * HZ);
 }
 
@@ -1070,8 +1075,10 @@ static void battery_chargalg_shutdown_worker(struct work_struct *work)
 	 * Disable charging after 10 seconds when detects capacity=0 and
 	 * wait for shutdown from BatteryService.
 	 */
-	if (!alg->batt_cap) {
-		dev_info(alg->dev, "Disabled charge since capacity is 0\n");
+	if (!alg->batt_cap &&
+	    alg->batt_status == POWER_SUPPLY_STATUS_CHARGING) {
+		dev_info(alg->dev,
+		"Disabled charge since charging and capacity is 0\n");
 		alg->disable_algorithm = 1;
 		battery_chargalg_schedule_delayed_work(&alg->work, 0);
 	}
@@ -1166,6 +1173,8 @@ static void battery_chargalg_state_machine(struct battery_chargalg_driver *alg)
 		     alg->pdata->disable_usb_host_charging))
 			break;
 
+		alg->eoc.need_recharge = 0;
+
 		if (alg->ovp.active)
 			next_state = BATT_ALG_STATE_FAULT_OVERVOLTAGE;
 		else if (alg->batt_temp < tlim[BATTERY_CHARGALG_TEMP_COLD])
@@ -1231,6 +1240,7 @@ static void battery_chargalg_state_machine(struct battery_chargalg_driver *alg)
 		     alg->pdata->recharge_threshold_capacity)) {
 			next_state = BATT_ALG_STATE_START;
 			alg->eoc.active = 0;
+			alg->eoc.need_recharge = 1;
 			if (alg->pdata->set_charging_status)
 				(void)alg->pdata->set_charging_status(-1);
 		}
@@ -1481,8 +1491,8 @@ static void battery_chargalg_charger_setting(
 					alg->ctrl.psy_curr_cradle);
 	}
 #else
-	if (alg->ctrl.onoff &&
-	    alg->connect_changed) {
+	if ((alg->ctrl.onoff && alg->connect_changed)
+		|| (alg->eoc.need_recharge)) {
 		if (alg->pdata->setup_exchanged_power_supply)
 			(void)alg->pdata->setup_exchanged_power_supply(
 						alg->chg_connected);
@@ -1490,12 +1500,14 @@ static void battery_chargalg_charger_setting(
 	}
 
 	if (alg->pdata->set_input_current_limit) {
-		if (alg->chg_curr != alg->ctrl.psy_curr) {
+		if ((alg->chg_curr != alg->ctrl.psy_curr)
+			|| (alg->eoc.need_recharge)) {
 			alg->ctrl.psy_curr = alg->chg_curr;
 			(void)alg->pdata->set_input_current_limit(
 						alg->ctrl.psy_curr);
 		}
 	}
+
 #endif
 
 	dev_dbg(alg->dev,
@@ -1676,8 +1688,10 @@ static void battery_chargalg_control_charger(
 	alg->ctrl.curr = min(alg->ctrl.curr,
 			     alg->pdata->ddata->maximum_charging_current_ma);
 
-	if (!alg->ctrl.onoff && alg->chg_connected &&
-	    alg->pdata->turn_on_charger) {
+	if ((!alg->ctrl.onoff && alg->chg_connected &&
+	    alg->pdata->turn_on_charger && alg->connect_changed)
+	    || (!alg->ctrl.onoff && alg->chg_connected &&
+	    alg->pdata->turn_on_charger && alg->eoc.need_recharge)) {
 		if (alg->pdata->turn_on_charger(
 		    alg->chg_connected & USB_CHG)) {
 			/* Since resuming i2c driver if turn_on function
@@ -1719,10 +1733,13 @@ static void battery_chargalg_control_charger(
 	    alg->ctrl.curr != alg->old_ctrl.curr)
 		(void)alg->pdata->set_charger_current(alg->ctrl.curr);
 
-	if (alg->ctrl.onoff && !alg->chg_connected &&
-	    alg->pdata->turn_off_charger) {
-		(void)alg->pdata->turn_off_charger();
+	if ((alg->ctrl.onoff && !alg->chg_connected)
+	    || (alg->ctrl.onoff && alg->chg_connected &&
+	        alg->eoc.active)) {
+	        if (alg->pdata->turn_off_charger)
+			(void)alg->pdata->turn_off_charger();
 		alg->ctrl.onoff = 0;
+		alg->eoc.need_recharge = 0;
 	}
 
 	MUTEX_UNLOCK(&alg->lock);

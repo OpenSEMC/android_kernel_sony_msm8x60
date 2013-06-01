@@ -13,6 +13,7 @@
  *
  */
 
+#include <linux/export.h>
 #include <linux/fmem.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
@@ -40,8 +41,7 @@ void *fmem_map_virtual_area(int cacheability)
 
 	addr = (unsigned long) fmem_data.area->addr;
 	type = get_mem_type(cacheability);
-	ret = ioremap_page_range(addr, addr + fmem_data.size,
-			fmem_data.phys, __pgprot(type->prot_pte));
+	ret = ioremap_pages(addr, fmem_data.phys, fmem_data.size, type);
 	if (ret)
 		return ERR_PTR(ret);
 

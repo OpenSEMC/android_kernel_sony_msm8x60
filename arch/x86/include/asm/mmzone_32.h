@@ -14,6 +14,12 @@ extern struct pglist_data *node_data[];
 
 #include <asm/numaq.h>
 
+extern void resume_map_numa_kva(pgd_t *pgd);
+
+#else /* !CONFIG_NUMA */
+
+static inline void resume_map_numa_kva(pgd_t *pgd) {}
+
 #endif /* CONFIG_NUMA */
 
 #ifdef CONFIG_DISCONTIGMEM
@@ -28,15 +34,15 @@ extern struct pglist_data *node_data[];
  *    64Gb / 4096bytes/page = 16777216 pages
  */
 #define MAX_NR_PAGES 16777216
-#define MAX_ELEMENTS 1024
-#define PAGES_PER_ELEMENT (MAX_NR_PAGES/MAX_ELEMENTS)
+#define MAX_SECTIONS 1024
+#define PAGES_PER_SECTION (MAX_NR_PAGES/MAX_SECTIONS)
 
 extern s8 physnode_map[];
 
 static inline int pfn_to_nid(unsigned long pfn)
 {
 #ifdef CONFIG_NUMA
-	return((int) physnode_map[(pfn) / PAGES_PER_ELEMENT]);
+	return((int) physnode_map[(pfn) / PAGES_PER_SECTION]);
 #else
 	return 0;
 #endif

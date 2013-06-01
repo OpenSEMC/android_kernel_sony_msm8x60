@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,6 +24,7 @@
 #include <linux/mfd/marimba.h>
 #include <linux/slab.h>
 #include <linux/debugfs.h>
+#include <linux/module.h>
 
 #define MARIMBA_MODE				0x00
 
@@ -614,7 +615,7 @@ DEFINE_SIMPLE_ATTRIBUTE(dbg_addr_fops, addr_get, addr_set, "0x%03llX\n");
 static int __devinit marimba_dbg_init(int adie_type)
 {
 	struct adie_dbg_device *dbgdev;
-	struct dentry *dent;
+	struct dentry *dent = NULL;
 	struct dentry *temp;
 
 	dbgdev = kzalloc(sizeof *dbgdev, GFP_KERNEL);
@@ -759,7 +760,7 @@ static void marimba_init_reg(struct i2c_client *client, u8 driver_data)
 	}
 }
 
-static int marimba_probe(struct i2c_client *client,
+static int __devinit marimba_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
 	struct marimba_platform_data *pdata = client->dev.platform_data;

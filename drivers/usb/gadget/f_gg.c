@@ -127,10 +127,15 @@ static int gg_gser_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	} else
 		DBG(cdev, "activate generic ttyGS%d\n", gser->port_num);
 
-	gser->port.in_desc = ep_choose(cdev->gadget,
-				gser->hs.in, gser->fs.in);
-	gser->port.out_desc = ep_choose(cdev->gadget,
-				gser->hs.out, gser->fs.out);
+	if (!gser->port.in->desc || !gser->port.out->desc) {
+		DBG(cdev, "activate generic ttyGS%d\n", gser->port_num);
+		if (config_ep_by_speed(cdev->gadget, f, gser->port.in) ||
+		    config_ep_by_speed(cdev->gadget, f, gser->port.out)) {
+			gser->port.in->desc = NULL;
+			gser->port.out->desc = NULL;
+			return -EINVAL;
+		}
+	}
 
 	gserial_connect(&gser->port, gser->port_num);
 	printk(KERN_INFO "GG: gg_gser_set_alt: ttyGS%d\n", gser->port_num);
@@ -181,12 +186,6 @@ static int gg_gser_bind(struct usb_configuration *c, struct usb_function *f)
 	/* copy descriptors, and track endpoint copies */
 	f->descriptors = usb_copy_descriptors(gg_gser_fs_function);
 
-	gser->fs.in = usb_find_endpoint(gg_gser_fs_function,
-			f->descriptors, &gg_gser_fs_in_desc);
-	gser->fs.out = usb_find_endpoint(gg_gser_fs_function,
-			f->descriptors, &gg_gser_fs_out_desc);
-
-
 	/* support all relevant hardware speeds... we expect that when
 	 * hardware is dual speed, all bulk-capable endpoints work at
 	 * both speeds
@@ -199,11 +198,6 @@ static int gg_gser_bind(struct usb_configuration *c, struct usb_function *f)
 
 		/* copy descriptors, and track endpoint copies */
 		f->hs_descriptors = usb_copy_descriptors(gg_gser_hs_function);
-
-		gser->hs.in = usb_find_endpoint(gg_gser_hs_function,
-				f->hs_descriptors, &gg_gser_hs_in_desc);
-		gser->hs.out = usb_find_endpoint(gg_gser_hs_function,
-				f->hs_descriptors, &gg_gser_hs_out_desc);
 	}
 
 	DBG(cdev, "generic ttyGS%d: %s speed IN/%s OUT/%s\n",

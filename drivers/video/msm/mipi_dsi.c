@@ -69,6 +69,8 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	struct msm_panel_info *pinfo;
 
+	pr_debug("%s+:\n", __func__);
+
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
@@ -77,15 +79,14 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		down(&mfd->dma->mutex);
 
-	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		mipi_dsi_prepare_clocks();
+		mipi_dsi_ahb_ctrl(1);
+		mipi_dsi_clk_enable();
 
-	/* make sure dsi clk is on so that
-	 * dcs commands can be sent
-	 */
-	mipi_dsi_clk_cfg(1);
-
-	/* make sure dsi_cmd_mdp is idle */
-	mipi_dsi_cmd_mdp_busy();
+		/* make sure dsi_cmd_mdp is idle */
+		mipi_dsi_cmd_mdp_busy();
+	}
 
 	/*
 	 * Desctiption: change to DSI_CMD_MODE since it needed to
@@ -129,8 +130,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
-	pr_debug("%s-:\n", __func__);
-
 	return ret;
 }
 
@@ -147,6 +146,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	u32 ystride, bpp, data;
 	u32 dummy_xres, dummy_yres;
 	int target_type = 0;
+
+	pr_debug("%s+:\n", __func__);
+
+	pr_debug("%s+:\n", __func__);
 
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
@@ -258,8 +261,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	else
 		down(&mfd->dma->mutex);
 
-	if (mfd->op_enable)
-		ret = panel_next_on(pdev);
+	ret = panel_next_on(pdev);
 
 	mipi_dsi_op_mode_config(mipi->mode);
 
@@ -308,20 +310,21 @@ static int mipi_dsi_on(struct platform_device *pdev)
 			}
 			mipi_dsi_set_tear_on(mfd);
 		}
+		mipi_dsi_clk_disable();
+		mipi_dsi_ahb_ctrl(0);
+		mipi_dsi_unprepare_clocks();
 	}
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
 #endif
 
-	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
-
 	if (mdp_rev >= MDP_REV_41)
 		mutex_unlock(&mfd->dma->ov_mutex);
 	else
 		up(&mfd->dma->mutex);
 
-	pr_debug("%s-:\n", __func__);
+	pr_debug("End of %s....:\n", __func__);
 
 	return ret;
 }
@@ -342,8 +345,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	uint32 h_period, v_period, dsi_pclk_rate;
 
 	resource_size_t size ;
-
-	printk("PL:mipi_dsi_probe\n");
 
 	if ((pdev->id == 1) && (pdev->num_resources >= 0)) {
 		mipi_dsi_pdata = pdev->dev.platform_data;
@@ -565,10 +566,8 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	if (rc)
 		goto mipi_dsi_probe_err;
 
-	if ((dsi_pclk_rate < 3300000) || (dsi_pclk_rate > 223000000)) {
-		pr_err("%s: Pixel clock not supported\n", __func__);
+	if ((dsi_pclk_rate < 3300000) || (dsi_pclk_rate > 103300000))
 		dsi_pclk_rate = 35000000;
-	}
 	mipi->dsi_pclk_rate = dsi_pclk_rate;
 
 	/*
@@ -584,8 +583,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		goto mipi_dsi_probe_err;
 
 	pdev_list[pdev_list_cnt++] = pdev;
-
-	printk("PL: mipi_dsi_probe() done without error\n");
 
 return 0;
 

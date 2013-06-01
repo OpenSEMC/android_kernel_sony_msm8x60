@@ -1743,7 +1743,7 @@ static struct i2c_driver as3676_driver = {
 	.id_table = as3676_idtable,
 };
 
-#define AS3676_DCDC_CTRL_1_DEFAULT 0x48
+#define AS3676_DCDC_CTRL_1_DEFAULT 0x62
 
 static int __devinit as3676_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)

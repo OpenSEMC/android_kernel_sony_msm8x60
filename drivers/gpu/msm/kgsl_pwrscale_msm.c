@@ -17,7 +17,6 @@
 #include "kgsl_pwrscale.h"
 #include "kgsl_device.h"
 #include "a2xx_reg.h"
-#include "kgsl_trace.h"
 
 struct msm_priv {
 	struct kgsl_device *device;
@@ -27,7 +26,6 @@ struct msm_priv {
 	struct msm_dcvs_idle idle_source;
 	struct msm_dcvs_freq freq_sink;
 	struct msm_dcvs_core_info *core_info;
-	int gpu_busy;
 };
 
 static int msm_idle_enable(struct msm_dcvs_idle *self,
@@ -91,40 +89,29 @@ static void msm_busy(struct kgsl_device *device,
 			struct kgsl_pwrscale *pwrscale)
 {
 	struct msm_priv *priv = pwrscale->priv;
-	if (priv->enabled && !priv->gpu_busy) {
+	if (priv->enabled)
 		msm_dcvs_idle(priv->handle, MSM_DCVS_IDLE_EXIT, 0);
-		trace_kgsl_mpdcvs(device, 1);
-		priv->gpu_busy = 1;
-	}
 	return;
 }
 
 static void msm_idle(struct kgsl_device *device,
-		struct kgsl_pwrscale *pwrscale, unsigned int ignore_idle)
+			struct kgsl_pwrscale *pwrscale)
 {
 	struct msm_priv *priv = pwrscale->priv;
+	unsigned int rb_rptr, rb_wptr;
+	kgsl_regread(device, REG_CP_RB_RPTR, &rb_rptr);
+	kgsl_regread(device, REG_CP_RB_WPTR, &rb_wptr);
 
-	if (priv->enabled && priv->gpu_busy)
-		if (device->ftbl->isidle(device)) {
-			msm_dcvs_idle(priv->handle, MSM_DCVS_IDLE_ENTER, 0);
-			trace_kgsl_mpdcvs(device, 0);
-			priv->gpu_busy = 0;
-		}
+	if (priv->enabled && (rb_rptr == rb_wptr))
+		msm_dcvs_idle(priv->handle, MSM_DCVS_IDLE_ENTER, 0);
+
 	return;
 }
 
 static void msm_sleep(struct kgsl_device *device,
 			struct kgsl_pwrscale *pwrscale)
 {
-	struct msm_priv *priv = pwrscale->priv;
-
-	if (priv->enabled && priv->gpu_busy) {
-		msm_dcvs_idle(priv->handle, MSM_DCVS_IDLE_ENTER, 0);
-		trace_kgsl_mpdcvs(device, 0);
-		priv->gpu_busy = 0;
-	}
-
-	return;
+	/* do we need to reset any parameters here? */
 }
 
 static int msm_init(struct kgsl_device *device,
@@ -172,10 +159,10 @@ static int msm_init(struct kgsl_device *device,
 	ret = msm_dcvs_freq_sink_register(&priv->freq_sink);
 	if (ret >= 0) {
 		if (device->ftbl->isidle(device)) {
-			priv->gpu_busy = 0;
+			device->pwrscale.gpu_busy = 0;
 			msm_dcvs_idle(priv->handle, MSM_DCVS_IDLE_ENTER, 0);
 		} else {
-			priv->gpu_busy = 1;
+			device->pwrscale.gpu_busy = 1;
 		}
 		return 0;
 	}

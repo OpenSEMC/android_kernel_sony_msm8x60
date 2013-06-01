@@ -137,6 +137,16 @@ static inline void mpol_cond_put(struct mempolicy *pol)
 		__mpol_put(pol);
 }
 
+extern struct mempolicy *__mpol_cond_copy(struct mempolicy *tompol,
+					  struct mempolicy *frompol);
+static inline struct mempolicy *mpol_cond_copy(struct mempolicy *tompol,
+						struct mempolicy *frompol)
+{
+	if (!frompol)
+		return frompol;
+	return __mpol_cond_copy(tompol, frompol);
+}
+
 extern struct mempolicy *__mpol_dup(struct mempolicy *pol);
 static inline struct mempolicy *mpol_dup(struct mempolicy *pol)
 {
@@ -154,11 +164,11 @@ static inline void mpol_get(struct mempolicy *pol)
 		atomic_inc(&pol->refcnt);
 }
 
-extern int __mpol_equal(struct mempolicy *a, struct mempolicy *b);
-static inline int mpol_equal(struct mempolicy *a, struct mempolicy *b)
+extern bool __mpol_equal(struct mempolicy *a, struct mempolicy *b);
+static inline bool mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {
 	if (a == b)
-		return 1;
+		return true;
 	return __mpol_equal(a, b);
 }
 
@@ -178,7 +188,7 @@ struct sp_node {
 
 struct shared_policy {
 	struct rb_root root;
-	struct mutex mutex;
+	spinlock_t lock;
 };
 
 void mpol_shared_policy_init(struct shared_policy *sp, struct mempolicy *mpol);
@@ -247,9 +257,9 @@ static inline int vma_migratable(struct vm_area_struct *vma)
 
 struct mempolicy {};
 
-static inline int mpol_equal(struct mempolicy *a, struct mempolicy *b)
+static inline bool mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {
-	return 1;
+	return true;
 }
 
 static inline void mpol_put(struct mempolicy *p)
@@ -258,6 +268,12 @@ static inline void mpol_put(struct mempolicy *p)
 
 static inline void mpol_cond_put(struct mempolicy *pol)
 {
+}
+
+static inline struct mempolicy *mpol_cond_copy(struct mempolicy *to,
+						struct mempolicy *from)
+{
+	return from;
 }
 
 static inline void mpol_get(struct mempolicy *pol)

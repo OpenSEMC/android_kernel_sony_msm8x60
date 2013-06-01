@@ -144,7 +144,6 @@ static inline int msm_iommu_map_extra(struct iommu_domain *domain,
 						int cached)
 {
 	return -ENODEV;
-
 }
 
 static inline void msm_iommu_unmap_extra(struct iommu_domain *domain,

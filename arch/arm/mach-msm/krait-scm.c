@@ -16,6 +16,7 @@
 #include <linux/cpu.h>
 #include <linux/smp.h>
 #include <linux/sysfs.h>
+#include <linux/sysdev.h>
 
 #include <mach/scm.h>
 
@@ -102,7 +103,7 @@ static SYSDEV_CLASS_ATTR(cpuctl, 0600, show_cpuctl, store_cpuctl);
 
 static int __init init_scm_cpu(void)
 {
-	return sysfs_create_file(&cpu_sysdev_class.kset.kobj,
+	return sysfs_create_file(&cpu_subsys.dev_root->kobj,
 			&attr_cpuctl.attr);
 }
 module_init(init_scm_cpu);

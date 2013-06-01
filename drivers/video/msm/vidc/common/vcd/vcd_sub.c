@@ -121,8 +121,10 @@ static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr,
 				(unsigned long *)&iova,
 				(unsigned long *)&buffer_size,
 				UNCACHED, 0);
-			if (ret) {
-				pr_err("%s() ION iommu map failed", __func__);
+			if (ret || !iova) {
+				pr_err(
+				"%s() ION iommu map failed, ret = %d, iova = 0x%lx",
+					__func__, ret, iova);
 				goto ion_map_bailout;
 			}
 			map_buffer->phy_addr = iova;
@@ -919,7 +921,7 @@ struct vcd_buffer_entry *vcd_find_buffer_pool_entry
 	u32 i;
 	u32 found = false;
 
-	for (i = 1; i <= pool->count && !found; i++) {
+	for (i = 0; i <= pool->count && !found; i++) {
 		if (pool->entries[i].virtual == addr)
 			found = true;
 
@@ -1253,7 +1255,7 @@ u32 vcd_validate_driver_handle(
 	driver_handle--;
 
 	if (driver_handle < 0 ||
-		driver_handle >= VCD_DRIVER_CLIENTS_MAX ||
+		driver_handle >= VCD_DRIVER_INSTANCE_MAX ||
 		!dev_ctxt->driver_ids[driver_handle]) {
 		return false;
 	} else {
@@ -1531,9 +1533,8 @@ u32 vcd_submit_frame(struct vcd_dev_ctxt *dev_ctxt,
 	struct vcd_buffer_entry *op_buf_entry = NULL;
 	u32 rc = VCD_S_SUCCESS;
 	u32 evcode = 0;
-	// PL: removed
-	// u32 perf_level = 0;
-	//	int decodeTime = 0;
+	u32 perf_level = 0;
+	int decodeTime = 0;
 	struct ddl_frame_data_tag ddl_ip_frm;
 	struct ddl_frame_data_tag *ddl_op_frm;
 	u32 out_buf_cnt = 0;
@@ -1549,8 +1550,6 @@ u32 vcd_submit_frame(struct vcd_dev_ctxt *dev_ctxt,
 	ip_frm_entry->ip_frm_tag = (u32) transc;
 	memset(&ddl_ip_frm, 0, sizeof(ddl_ip_frm));
 	if (cctxt->decoding) {
-	  // PL: FIXME: removed, verify
-	  /*
 		decodeTime = ddl_get_core_decode_proc_time(cctxt->ddl_handle);
 		if (decodeTime > MAX_DEC_TIME) {
 			if (res_trk_get_curr_perf_level(&perf_level)) {
@@ -1561,7 +1560,6 @@ u32 vcd_submit_frame(struct vcd_dev_ctxt *dev_ctxt,
 				VCD_MSG_ERROR("%s(): retrieve curr_perf_level"
 						"returned FALSE\n", __func__);
 		}
-	  */
 		evcode = CLIENT_STATE_EVENT_NUMBER(decode_frame);
 		ddl_ip_frm.vcd_frm = *ip_frm_entry;
 		rc = ddl_decode_frame(cctxt->ddl_handle, &ddl_ip_frm,

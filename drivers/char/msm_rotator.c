@@ -178,13 +178,13 @@ int msm_rotator_iommu_map_buf(int mem_id, int domain,
 	if (!msm_rotator_dev->client)
 		return -EINVAL;
 
-	*pihdl = ion_import_fd(msm_rotator_dev->client, mem_id);
+	*pihdl = ion_import_dma_buf(msm_rotator_dev->client, mem_id);
 	if (IS_ERR_OR_NULL(*pihdl)) {
-		pr_err("ion_import_fd() failed\n");
+		pr_err("ion_import_dma_buf() failed\n");
 		return PTR_ERR(*pihdl);
 	}
-	pr_debug("%s(): ion_hdl %p, ion_buf %p\n", __func__, *pihdl,
-		ion_share(msm_rotator_dev->client, *pihdl));
+	pr_debug("%s(): ion_hdl %p, ion_fd %d\n", __func__, *pihdl,
+		ion_share_dma_buf(msm_rotator_dev->client, *pihdl));
 
 	if (rot_iommu_split_domain) {
 		if (secure) {
@@ -199,8 +199,7 @@ int msm_rotator_iommu_map_buf(int mem_id, int domain,
 				*pihdl,	domain, GEN_POOL,
 				SZ_4K, 0, start, len, 0,
 				ION_IOMMU_UNMAP_DELAYED)) {
-				pr_err("%s(): ion_map_iommu() failed\n",
-					__func__);
+				pr_err("ion_map_iommu() failed\n");
 				return -EINVAL;
 			}
 		}
@@ -208,7 +207,7 @@ int msm_rotator_iommu_map_buf(int mem_id, int domain,
 		if (ion_map_iommu(msm_rotator_dev->client,
 			*pihdl,	ROTATOR_SRC_DOMAIN, GEN_POOL,
 			SZ_4K, 0, start, len, 0, ION_IOMMU_UNMAP_DELAYED)) {
-			pr_err("Non split rot ion_map_iommu() failed\n");
+			pr_err("ion_map_iommu() failed\n");
 			return -EINVAL;
 		}
 	}
@@ -422,7 +421,6 @@ static int msm_rotator_get_plane_sizes(uint32_t format,	uint32_t w, uint32_t h,
 		break;
 	case MDP_Y_CRCB_H2V1:
 	case MDP_Y_CBCR_H2V1:
-	case MDP_Y_CRCB_H1V2:
 		p->num_planes = 2;
 		p->plane_size[0] = w * h;
 		p->plane_size[1] = w * h;
@@ -653,12 +651,9 @@ static int msm_rotator_ycrycb(struct msm_rotator_img_info *info,
 	int bpp;
 	uint32_t dst_format;
 
-	if (info->src.format == MDP_YCRYCB_H2V1) {
-		if (info->rotations & MDP_ROT_90)
-			dst_format = MDP_Y_CRCB_H1V2;
-		else
-			dst_format = MDP_Y_CRCB_H2V1;
-	} else
+	if (info->src.format == MDP_YCRYCB_H2V1)
+		dst_format = MDP_Y_CRCB_H2V1;
+	else
 		return -EINVAL;
 
 	if (info->dst.format != dst_format)
@@ -1291,10 +1286,7 @@ static int msm_rotator_start(unsigned long arg,
 		info.dst.format = info.src.format;
 		break;
 	case MDP_YCRYCB_H2V1:
-		if (info.rotations & MDP_ROT_90)
-			info.dst.format = MDP_Y_CRCB_H1V2;
-		else
-			info.dst.format = MDP_Y_CRCB_H2V1;
+		info.dst.format = MDP_Y_CRCB_H2V1;
 		break;
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CBCR_H2V2_TILE:
@@ -1608,7 +1600,8 @@ static int __devinit msm_rotator_probe(struct platform_device *pdev)
 		}
 	}
 
-	msm_rotator_dev->regulator = regulator_get(NULL, pdata->regulator_name);
+	msm_rotator_dev->regulator = regulator_get(&msm_rotator_dev->pdev->dev,
+						   "vdd");
 	if (IS_ERR(msm_rotator_dev->regulator))
 		msm_rotator_dev->regulator = NULL;
 

@@ -430,24 +430,6 @@ static int mpu6050_suspend(void *mlsl_handle,
 	}
 
 	result = inv_serial_read(mlsl_handle, pdata->address,
-				 MPUREG_PWR_MGMT_1, 1, &reg);
-
-	if (result) {
-		LOG_RESULT_LOCATION(result);
-		return result;
-	}
-
-	if (!(reg & BIT_SLEEP)) {
-		result = inv_serial_single_write(mlsl_handle, pdata->address,
-					MPUREG_PWR_MGMT_1, reg | BIT_SLEEP);
-		if (result) {
-			LOG_RESULT_LOCATION(result);
-			return result;
-		}
-	}
-	msleep(2);
-
-	result = inv_serial_read(mlsl_handle, pdata->address,
 				 MPUREG_PWR_MGMT_2, 1, &reg);
 	if (result) {
 		LOG_RESULT_LOCATION(result);

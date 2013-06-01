@@ -24,6 +24,7 @@
 #include <linux/mfd/pmic8058.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/msm_adc.h>
+#include <linux/module.h>
 #ifdef CONFIG_PMIC8058_MIC_BIAS
 #include <mach/pm8058-mic_bias.h>
 #endif
@@ -714,7 +715,7 @@ pm8058_add_subdevices(const struct pm8058_platform_data *pdata,
 						1, NULL, irq_base);
 		if (rc) {
 			pr_err("Failed to add keypad pmic subdevice"
-				"ret=%d\n", rc);
+			       "ret=%d\n", rc);
 			goto bail;
 		}
 	}

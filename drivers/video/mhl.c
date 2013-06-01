@@ -44,8 +44,6 @@ struct workqueue_struct *msc_command_workqueue;
 static DEFINE_MUTEX(usb_online_mutex);
 struct workqueue_struct *usb_online_workqueue;
 
-static void (*notify_usb_online)(int online);
-
 static int mhl_update_peer_devcap(struct mhl_device *mhl_dev,
 	int offset, u8 devcap);
 
@@ -115,7 +113,6 @@ int mhl_notify_unplugged(struct mhl_device *mhl_dev)
 	mhl_dev->mhl_online = 0;
 	mhl_dev->hpd_state = 0;
 	mhl_dev->tmds_state = FALSE;
-	mhl_dev->devcap_state = 0;
 	memset(&mhl_dev->state, 0, sizeof(struct mhl_state));
 
 	/* callback usb driver if callback registered */
@@ -197,7 +194,6 @@ int mhl_notify_offline(struct mhl_device *mhl_dev)
 
 	mhl_dev->mhl_online = 0;
 	mhl_dev->hpd_state = 0;
-	mhl_dev->devcap_state = 0;
 	memset(&mhl_dev->state, 0, sizeof(struct mhl_state));
 
 	kobject_uevent(&mhl_dev->dev.kobj, KOBJ_OFFLINE);
@@ -251,8 +247,6 @@ static int mhl_qualify_path_enable(struct mhl_device *mhl_dev)
 int mhl_msc_command_done(struct mhl_device *mhl_dev,
 	struct msc_command_struct *req)
 {
-	char *envp[2];
-
 	switch (req->command) {
 	case MHL_WRITE_STAT:
 		if (req->offset == MHL_STATUS_REG_LINK_MODE) {
@@ -272,14 +266,6 @@ int mhl_msc_command_done(struct mhl_device *mhl_dev,
 	case MHL_READ_DEVCAP:
 		mhl_update_peer_devcap(mhl_dev,
 			req->offset, req->retval);
-		mhl_dev->devcap_state |= BIT(req->offset);
-		if (MHL_DEVCAP_READ_DONE(mhl_dev->devcap_state)) {
-			mhl_dev->devcap_state = 0;
-			envp[0] = "DEVCAP_CHANGED";
-			envp[1] = NULL;
-			kobject_uevent_env(&mhl_dev->dev.kobj,
-					   KOBJ_CHANGE, envp);
-		}
 		switch (req->offset) {
 		case MHL_DEV_CATEGORY_OFFSET:
 			if (req->retval & MHL_DEV_CATEGORY_POW_BIT) {
@@ -412,10 +398,9 @@ int mhl_msc_recv_write_stat(struct mhl_device *mhl_dev, u8 offset, u8 value)
 		/* DCAP_RDY */
 		if (((value ^ mhl_dev->state.device_status[offset]) &
 			MHL_STATUS_DCAP_RDY)) {
-			if (value & MHL_STATUS_DCAP_RDY) {
-				mhl_dev->devcap_state = 0;
+			if (value & MHL_STATUS_DCAP_RDY)
 				mhl_msc_read_devcap_all(mhl_dev);
-			} else {
+			else {
 				/* peer dcap turned not ready */
 				mhl_clear_mhl_state(mhl_dev,
 					MHL_PEER_DCAP_READ);
@@ -480,7 +465,6 @@ int mhl_msc_recv_set_int(struct mhl_device *mhl_dev, u8 offset, u8 mask)
 			/* peer dcap has changed */
 			mhl_clear_mhl_state(mhl_dev,
 				MHL_PEER_DCAP_READ);
-			mhl_dev->devcap_state = 0;
 			mhl_msc_read_devcap_all(mhl_dev);
 		}
 		/* DSCR_CHG */
@@ -766,13 +750,10 @@ static int mhl_rap_recv(struct mhl_device *mhl_dev, u8 action_code)
 	case MHL_RAP_POLL:
 	case MHL_RAP_CONTENT_ON:
 	case MHL_RAP_CONTENT_OFF:
-		if (mhl_dev->full_operation) {
-			mhl_rap_action(mhl_dev, action_code);
-			error_code = MHL_RAPK_NO_ERROR;
-			/* notify userspace */
-			mhl_notify_rap_recv(mhl_dev, action_code);
-		} else
-			error_code = MHL_RAPK_UNSUPPORTED_ACTION_CODE;
+		mhl_rap_action(mhl_dev, action_code);
+		error_code = MHL_RAPK_NO_ERROR;
+		/* notify userspace */
+		mhl_notify_rap_recv(mhl_dev, action_code);
 		break;
 	default:
 		error_code = MHL_RAPK_UNRECOGNIZED_ACTION_CODE;
@@ -974,21 +955,28 @@ static void mhl_usb_online_work(struct work_struct *work)
 	struct mhl_device *mhl_dev =
 		container_of(work, struct mhl_device, usb_online_work);
 
-	if (notify_usb_online) {
+	if (mhl_dev->notify_usb_online) {
 		pr_info("%s: mhl usb online(%d)\n",
 			__func__, !!(mhl_dev->mhl_online & MHL_PLUGGED));
-		notify_usb_online
+		mhl_dev->notify_usb_online
 			(!!(mhl_dev->mhl_online & MHL_PLUGGED));
 	}
 }
 
 int mhl_register_callback(const char *name, void (*callback)(int on))
 {
+	struct mhl_device *mhl_dev;
 	int ret = 0;
 
-	if (!notify_usb_online)
-		notify_usb_online = callback;
-	else {
+	mhl_dev = mhl_get_dev(name);
+	if (!mhl_dev)
+		return -EFAULT;
+
+	if (!mhl_dev->notify_usb_online) {
+		mhl_dev->notify_usb_online = callback;
+		mhl_dev->notify_usb_online
+			(!!(mhl_dev->mhl_online & MHL_PLUGGED));
+	} else {
 		pr_err("%s: callback is already registered!\n", __func__);
 		ret = -EFAULT;
 	}
@@ -999,10 +987,15 @@ EXPORT_SYMBOL(mhl_register_callback);
 
 int mhl_unregister_callback(const char *name)
 {
+	struct mhl_device *mhl_dev;
 	int ret = 0;
 
-	if (notify_usb_online)
-		notify_usb_online = NULL;
+	mhl_dev = mhl_get_dev(name);
+	if (!mhl_dev)
+		return -EFAULT;
+
+	if (mhl_dev->notify_usb_online)
+		mhl_dev->notify_usb_online = NULL;
 	else {
 		pr_err("%s: callback is already unregistered!\n", __func__);
 		ret = -EFAULT;
@@ -1048,32 +1041,6 @@ int mhl_full_operation(const char *name, int enable)
 	return 0;
 }
 EXPORT_SYMBOL(mhl_full_operation);
-
-/********************************
- * interfaces for user space
- ********************************/
-
-static ssize_t mhl_show_adopter_id(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct mhl_device *mhl_dev = to_mhl_device(dev);
-	return snprintf(buf, PAGE_SIZE, "%02x%02x\n",
-			 mhl_dev->state.peer_devcap
-				[MHL_DEV_ADOPTER_ID_H_OFFSET],
-			 mhl_dev->state.peer_devcap
-				[MHL_DEV_ADOPTER_ID_L_OFFSET]);
-}
-
-static ssize_t mhl_show_device_id(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct mhl_device *mhl_dev = to_mhl_device(dev);
-	return snprintf(buf, PAGE_SIZE, "%02x%02x\n",
-			 mhl_dev->state.peer_devcap
-				[MHL_DEV_DEVICE_ID_H_OFFSET],
-			 mhl_dev->state.peer_devcap
-				[MHL_DEV_DEVICE_ID_L_OFFSET]);
-}
 
 /********************************
  * MHL class driver
@@ -1148,8 +1115,6 @@ static struct device_attribute mhl_class_attributes[] = {
 	__ATTR(discovery, 0440, mhl_show_discovery, NULL),
 	__ATTR(rcp, 0660, NULL, mhl_store_rcp),
 	__ATTR(rap, 0660, NULL, mhl_store_rap),
-	__ATTR(device_id, 0440, mhl_show_device_id, NULL),
-	__ATTR(adopter_id, 0440, mhl_show_adopter_id, NULL),
 	__ATTR_NULL,
 };
 

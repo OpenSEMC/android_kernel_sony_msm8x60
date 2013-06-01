@@ -1,7 +1,6 @@
 /*
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (c) 2000-2001, 2010-2012, Code Aurora Forum. All rights reserved.
-   Copyright (C) 2012 Sony Mobile Communications AB.
 
    Written 2000,2001 by Maxim Krasnyansky <maxk@qualcomm.com>
 
@@ -312,16 +311,14 @@ static void hci_cc_write_scan_enable(struct hci_dev *hdev, struct sk_buff *skb)
 
 		if (param & SCAN_INQUIRY) {
 			set_bit(HCI_ISCAN, &hdev->flags);
-			if (!old_iscan)
-				mgmt_discoverable(hdev->id, 1);
-		} else if (old_iscan)
+			mgmt_discoverable(hdev->id, 1);
+		} else
 			mgmt_discoverable(hdev->id, 0);
 
 		if (param & SCAN_PAGE) {
 			set_bit(HCI_PSCAN, &hdev->flags);
-			if (!old_pscan)
-				mgmt_connectable(hdev->id, 1);
-		} else if (old_pscan)
+			mgmt_connectable(hdev->id, 1);
+		} else
 			mgmt_connectable(hdev->id, 0);
 		hci_dev_unlock(hdev);
 	}
@@ -1550,7 +1547,7 @@ static inline void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff
 
 	BT_DBG("%s status %d", hdev->name, status);
 
-	if (!lmp_le_capable(hdev))
+	if (!hdev->disco_state)
 		clear_bit(HCI_INQUIRY, &hdev->flags);
 
 	hci_req_complete(hdev, HCI_OP_INQUIRY, status);
@@ -1768,7 +1765,7 @@ static inline void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff
 	struct hci_ev_disconn_complete *ev = (void *) skb->data;
 	struct hci_conn *conn;
 
-	BT_DBG("%s status %d reason %d", hdev->name, ev->status, ev->reason);
+	BT_DBG("%s status %d", hdev->name, ev->status);
 
 	if (ev->status) {
 		hci_dev_lock(hdev);
@@ -1786,7 +1783,7 @@ static inline void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff
 	conn->state = BT_CLOSED;
 
 	if (conn->type == ACL_LINK || conn->type == LE_LINK)
-		mgmt_disconnected(hdev->id, &conn->dst, ev->reason);
+		mgmt_disconnected(hdev->id, &conn->dst);
 
 	if (conn->type == LE_LINK)
 		del_timer(&conn->smp_timer);
@@ -1814,6 +1811,15 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 			struct hci_cp_auth_requested cp;
 			hci_remove_link_key(hdev, &conn->dst);
 			cp.handle = cpu_to_le16(conn->handle);
+			/*Initiates dedicated bonding as pin or key is missing
+			on remote device*/
+			/*In case if remote device is ssp supported,
+			reduce the security level to MEDIUM if it is HIGH*/
+			if (conn->ssp_mode && conn->auth_initiator &&
+				conn->io_capability != 0x03) {
+				conn->pending_sec_level = BT_SECURITY_HIGH;
+				conn->auth_type = HCI_AT_DEDICATED_BONDING_MITM;
+			}
 			hci_send_cmd(conn->hdev, HCI_OP_AUTH_REQUESTED,
 							sizeof(cp), &cp);
 			hci_dev_unlock(hdev);
@@ -1854,11 +1860,29 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
 			if (!ev->status) {
-				struct hci_cp_set_conn_encrypt cp;
-				cp.handle  = ev->handle;
-				cp.encrypt = 0x01;
-				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
-							sizeof(cp), &cp);
+				if (conn->link_mode & HCI_LM_ENCRYPT) {
+					/* Encryption implies authentication */
+					conn->link_mode |= HCI_LM_AUTH;
+					conn->link_mode |= HCI_LM_ENCRYPT;
+					conn->sec_level =
+						conn->pending_sec_level;
+					clear_bit(HCI_CONN_ENCRYPT_PEND,
+							&conn->pend);
+					hci_encrypt_cfm(conn, ev->status, 1);
+
+					if (test_bit(HCI_MGMT, &hdev->flags))
+						mgmt_encrypt_change(hdev->id,
+							&conn->dst,
+							ev->status);
+
+				} else {
+					struct hci_cp_set_conn_encrypt cp;
+					cp.handle  = ev->handle;
+					cp.encrypt = 0x01;
+					hci_send_cmd(hdev,
+						HCI_OP_SET_CONN_ENCRYPT,
+						sizeof(cp), &cp);
+				}
 			} else {
 				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
 				hci_encrypt_cfm(conn, ev->status, 0x00);
@@ -2259,7 +2283,7 @@ static inline void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *sk
 	if (ev->opcode != HCI_OP_NOP)
 		del_timer(&hdev->cmd_timer);
 
-	if (ev->ncmd && !test_bit(HCI_RESET, &hdev->flags)) {
+	if (ev->ncmd) {
 		atomic_set(&hdev->cmd_cnt, 1);
 		if (!skb_queue_empty(&hdev->cmd_q))
 			tasklet_schedule(&hdev->cmd_task);
@@ -2542,6 +2566,9 @@ static inline void hci_mode_change_evt(struct hci_dev *hdev, struct sk_buff *skb
 			else
 				conn->power_save = 0;
 		}
+		if (conn->mode == HCI_CM_SNIFF)
+			if (wake_lock_active(&conn->idle_lock))
+				wake_unlock(&conn->idle_lock);
 
 		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->pend))
 			hci_sco_setup(conn, ev->status);
@@ -2619,13 +2646,8 @@ static inline void hci_link_key_request_evt(struct hci_dev *hdev, struct sk_buff
 		goto not_found;
 	}
 
-	/* ignore unauthenticated link key if mitm is required and we can
-	   upgrade */
 	if (key->key_type == 0x04 && conn && conn->auth_type != 0xff &&
-		(conn->auth_type & 0x01) &&
-		((conn->io_capability == 0x01) &&
-			(conn->remote_cap == 0x01 ||
-			conn->remote_cap == 0x02))) {
+						(conn->auth_type & 0x01)) {
 		BT_DBG("%s ignoring unauthenticated key", hdev->name);
 		goto not_found;
 	}
@@ -2663,6 +2685,7 @@ static inline void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff 
 		conn->key_type = ev->key_type;
 		hci_disconnect_amp(conn, 0x06);
 
+		conn->link_mode &= ~HCI_LM_ENCRYPT;
 		pin_len = conn->pin_length;
 		hci_conn_put(conn);
 		hci_conn_enter_active_mode(conn, 0);

@@ -14,10 +14,8 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
-#include <linux/mfd/wcd9310/core.h>
 #include <linux/bitops.h>
 #include <linux/slab.h>
-#include <linux/clk.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
@@ -25,7 +23,6 @@
 #include <sound/q6afe.h>
 #include <sound/q6adm.h>
 #include <sound/msm-dai-q6.h>
-#include <mach/clk.h>
 #include <mach/msm_hdmi_audio.h>
 
 
@@ -41,6 +38,46 @@ struct msm_dai_q6_hdmi_dai_data {
 	union afe_port_config port_config;
 };
 
+static int msm_dai_q6_hdmi_format_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+
+	struct msm_dai_q6_hdmi_dai_data *dai_data = kcontrol->private_data;
+	int value = ucontrol->value.integer.value[0];
+	dai_data->port_config.hdmi_multi_ch.data_type = value;
+	pr_debug("%s: value = %d\n", __func__, value);
+	return 0;
+}
+
+static int msm_dai_q6_hdmi_format_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+
+	struct msm_dai_q6_hdmi_dai_data *dai_data = kcontrol->private_data;
+	ucontrol->value.integer.value[0] =
+		dai_data->port_config.hdmi_multi_ch.data_type;
+	return 0;
+}
+
+
+/* HDMI format field for AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG command
+ *  0: linear PCM
+ *  1: non-linear PCM
+ */
+static const char *hdmi_format[] = {
+	"LPCM",
+	"Compr"
+};
+
+static const struct soc_enum hdmi_config_enum[] = {
+	SOC_ENUM_SINGLE_EXT(2, hdmi_format),
+};
+
+static const struct snd_kcontrol_new hdmi_config_controls[] = {
+	SOC_ENUM_EXT("HDMI RX Format", hdmi_config_enum[0],
+				 msm_dai_q6_hdmi_format_get,
+				 msm_dai_q6_hdmi_format_put),
+};
 
 /* Current implementation assumes hw_param is called once
  * This may not be the case but what to do when ADM and AFE
@@ -57,7 +94,6 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 
 	dai_data->channels = params_channels(params);
 	dai_data->rate = params_rate(params);
-	dai_data->port_config.hdmi_multi_ch.data_type = 0;
 	dai_data->port_config.hdmi_multi_ch.reserved = 0;
 
 	switch (dai_data->channels) {
@@ -81,9 +117,11 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 	dev_dbg(dai->dev, "%s() num_ch = %u rate =%u"
-		" channel_allocation = %u\n", __func__, dai_data->channels,
+		" channel_allocation = %u data type = %d\n", __func__,
+		dai_data->channels,
 		dai_data->rate,
-		dai_data->port_config.hdmi_multi_ch.channel_allocation);
+		dai_data->port_config.hdmi_multi_ch.channel_allocation,
+		dai_data->port_config.hdmi_multi_ch.data_type);
 
 	return 0;
 }
@@ -120,57 +158,23 @@ static int msm_dai_q6_hdmi_prepare(struct snd_pcm_substream *substream,
 	int rc = 0;
 
 	if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-		/* PORT START should be set if prepare called in active state */
-		rc = afe_q6_interface_prepare();
+		rc = afe_port_start(dai->id, &dai_data->port_config,
+				    dai_data->rate);
 		if (IS_ERR_VALUE(rc))
-			dev_err(dai->dev, "fail to open AFE APR\n");
+			dev_err(dai->dev, "fail to open AFE port %x\n",
+				dai->id);
+		else
+			set_bit(STATUS_PORT_STARTED,
+				dai_data->status_mask);
 	}
+
 	return rc;
-}
-
-static int msm_dai_q6_hdmi_trigger(struct snd_pcm_substream *substream, int cmd,
-		struct snd_soc_dai *dai)
-{
-	struct msm_dai_q6_hdmi_dai_data *dai_data = dev_get_drvdata(dai->dev);
-
-	/* Start/stop port without waiting for Q6 AFE response. Need to have
-	 * native q6 AFE driver propagates AFE response in order to handle
-	 * port start/stop command error properly if error does arise.
-	 */
-	pr_debug("%s:port:%d  cmd:%d dai_data->status_mask = %ld",
-		__func__, dai->id, cmd, *dai_data->status_mask);
-
-	switch (cmd) {
-	case SNDRV_PCM_TRIGGER_START:
-	case SNDRV_PCM_TRIGGER_RESUME:
-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-			afe_port_start_nowait(dai->id, &dai_data->port_config,
-					dai_data->rate);
-
-			set_bit(STATUS_PORT_STARTED, dai_data->status_mask);
-		}
-		break;
-	case SNDRV_PCM_TRIGGER_STOP:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-			afe_port_stop_nowait(dai->id);
-			clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
-		}
-		break;
-
-	default:
-		dev_err(dai->dev, "invalid Trigger command = %d\n", cmd);
-		return -EINVAL;
-	}
-
-	return 0;
 }
 
 static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 {
 	struct msm_dai_q6_hdmi_dai_data *dai_data;
+	const struct snd_kcontrol_new *kcontrol;
 	int rc = 0;
 
 	dai_data = kzalloc(sizeof(struct msm_dai_q6_hdmi_dai_data),
@@ -183,6 +187,10 @@ static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 	} else
 		dev_set_drvdata(dai->dev, dai_data);
 
+	kcontrol = &hdmi_config_controls[0];
+
+	rc = snd_ctl_add(dai->card->snd_card,
+					 snd_ctl_new1(kcontrol, dai_data));
 	return rc;
 }
 
@@ -210,7 +218,6 @@ static int msm_dai_q6_hdmi_dai_remove(struct snd_soc_dai *dai)
 
 static struct snd_soc_dai_ops msm_dai_q6_hdmi_ops = {
 	.prepare	= msm_dai_q6_hdmi_prepare,
-	.trigger	= msm_dai_q6_hdmi_trigger,
 	.hw_params	= msm_dai_q6_hdmi_hw_params,
 	.shutdown	= msm_dai_q6_hdmi_shutdown,
 };

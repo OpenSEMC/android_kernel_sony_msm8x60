@@ -28,6 +28,7 @@
 #include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/reboot.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/mach-types.h>
@@ -117,6 +118,7 @@ static void rmt_storage_sdio_smem_work(struct work_struct *work);
 #endif
 
 static struct rmt_storage_client_info *rmc;
+struct rmt_storage_srv *rmt_srv;
 
 #ifdef CONFIG_MSM_SDIO_SMEM
 DECLARE_DELAYED_WORK(sdio_smem_work, rmt_storage_sdio_smem_work);
@@ -1071,6 +1073,10 @@ static int rmt_storage_force_sync(struct msm_rpc_client *client)
 {
 	struct rmt_storage_sync_recv_arg args;
 	int rc;
+
+	if (!client)
+		return -EINVAL;
+
 	rc = msm_rpc_client_req2(client,
 			RMT_STORAGE_FORCE_SYNC_PROC, NULL, NULL,
 			rmt_storage_receive_sync_arg, &args, -1);
@@ -1109,6 +1115,8 @@ static int rmt_storage_get_sync_status(struct msm_rpc_client *client)
 	struct rmt_storage_sync_sts_arg send_args;
 	struct rmt_storage_srv *srv;
 	int rc;
+    if (!client)
+		return -EINVAL;
 
 	srv = rmt_storage_get_srv(client->prog);
 	if (!srv)
@@ -1402,6 +1410,77 @@ static void rmt_storage_set_client_status(struct rmt_storage_srv *srv,
 	spin_unlock(&rmc->lock);
 }
 
+static void rmt_storage_set_client_status(struct rmt_storage_srv *srv,
+                                         int enable);
+
+/*
+ * * Initiate the remote storage force sync and wait until
+ * * sync status is done or maximum 4 seconds in the reboot notifier.
+ * * Usually RMT storage sync is not taking more than 2 seconds
+ * * for encryption and sync.
+ * */
+static int rmt_storage_reboot_call(
+		struct notifier_block *this, unsigned long code, void *cmd)
+{
+	int ret, count = 0;
+/*
+        * In recovery mode RMT daemon is not available,
+        * so return from reboot notifier without initiating
+        * force sync.
+        * add senario: in normal mode, if reboot or shutdown  very early before the userspace open.
+        */
+       spin_lock(&rmc->lock);
+       if (!rmc->open_excl) {
+              spin_unlock(&rmc->lock);
+              msm_rpc_unregister_client(rmt_srv->rpc_client);
+               return NOTIFY_DONE;
+       }
+
+      spin_unlock(&rmc->lock);
+
+	switch (code) {
+		case SYS_RESTART:
+		case SYS_HALT:
+		case SYS_POWER_OFF:
+			pr_info("%s: Force RMT storage final sync...\n", __func__);
+			ret = rmt_storage_force_sync(rmt_srv->rpc_client);
+			if (ret)
+				break;
+
+			do {
+				count++;
+				msleep(20);
+				ret = rmt_storage_get_sync_status(rmt_srv->rpc_client);
+			} while (ret != 1 && count < 200);
+
+			if (ret == 1)
+				pr_info("%s: RMT storage sync successful.\n", __func__);
+			else
+				pr_err("%s: RMT storage sync failed.\n", __func__);
+			cancel_delayed_work_sync(&rmt_srv->restart_work);
+            rmt_storage_set_client_status(rmt_srv, 0);
+			pr_info("%s: Un register RMT storage client.\n", __func__);
+			msm_rpc_unregister_client(rmt_srv->rpc_client);
+			break;
+
+		default:
+			break;
+	}
+	return NOTIFY_DONE;
+}
+
+/*
+ * * For the RMT storage sync, RPC channels are required. If we do not
+ * * give max priority to RMT storage reboot notifier, RPC channels may get
+ * * closed before RMT storage sync completed if RPC reboot notifier gets
+ * * executed before this remotefs reboot notifier. Hence give the maximum
+ * * priority to this reboot notifier.
+ * */
+static struct notifier_block rmt_storage_reboot_notifier = {
+	.notifier_call = rmt_storage_reboot_call,
+	.priority = INT_MAX,
+};
+
 static DEVICE_ATTR(force_sync, S_IRUGO | S_IWUSR, show_force_sync, NULL);
 static DEVICE_ATTR(sync_sts, S_IRUGO | S_IWUSR, show_sync_sts, NULL);
 static struct attribute *dev_attrs[] = {
@@ -1528,7 +1607,7 @@ static int rmt_storage_probe(struct platform_device *pdev)
 	int ret;
 
 	dev = container_of(pdev, struct rpcsvr_platform_device, base);
-	srv = rmt_storage_get_srv(dev->prog);
+	rmt_srv = srv = rmt_storage_get_srv(dev->prog);
 	if (!srv) {
 		pr_err("%s: Invalid prog = %#x\n", __func__, dev->prog);
 		return -ENXIO;
@@ -1567,6 +1646,16 @@ static int rmt_storage_probe(struct platform_device *pdev)
 	/* For targets that poll SMEM, set status to ready */
 	rmt_storage_set_client_status(srv, 1);
 
+	/* bypass the reboot_notifier for MDM */
+	if ( !machine_is_semc_aoba() || (MSM_RMT_STORAGE_APIPROG == dev->prog) ) {
+		ret = register_reboot_notifier(&rmt_storage_reboot_notifier);
+		if (ret)
+			pr_err("%s: Failed to register reboot notifier", __func__);
+	}
+	else {
+		pr_err("%s: Not to register reboot notifier for MDM_RMT_STORAGE_APIPROG", __func__);
+	}
+
 	ret = sysfs_create_group(&pdev->dev.kobj, &dev_attr_grp);
 	if (ret)
 		pr_err("%s: Failed to create sysfs node: %d\n", __func__, ret);
@@ -1580,6 +1669,7 @@ unregister_client:
 
 static void rmt_storage_client_shutdown(struct platform_device *pdev)
 {
+#if 0
 	struct rpcsvr_platform_device *dev;
 	struct rmt_storage_srv *srv;
 	int rc = 0;
@@ -1605,6 +1695,7 @@ static void rmt_storage_client_shutdown(struct platform_device *pdev)
 		}
 	}
 	rmt_storage_set_client_status(srv, 0);
+#endif
 }
 
 static void rmt_storage_destroy_rmc(void)

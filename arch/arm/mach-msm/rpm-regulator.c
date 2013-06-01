@@ -599,14 +599,6 @@ int rpm_vreg_set_voltage(int vreg_id, enum rpm_vreg_voter voter, int min_uV,
 	int uV = min_uV;
 	int lim_min_uV, lim_max_uV, i, rc;
 
-	/*
-	 * HACK: make this function a no-op for 8064 so that it can be called by
-	 * consumers on 8064 before RPM capabilities are present. (needed for
-	 * acpuclock driver)
-	 */
-	if (cpu_is_apq8064())
-		return 0;
-
 	if (!config) {
 		pr_err("rpm-regulator driver has not probed yet.\n");
 		return -ENODEV;
@@ -720,13 +712,6 @@ int rpm_vreg_set_frequency(int vreg_id, enum rpm_vreg_freq freq)
 	unsigned int mask[2] = {0}, val[2] = {0};
 	struct vreg *vreg;
 	int rc;
-
-	/*
-	 * HACK: make this function a no-op for 8064 so that it can be called by
-	 * consumers on 8064 before RPM capabilities are present.
-	 */
-	if (cpu_is_apq8064())
-		return 0;
 
 	if (!config) {
 		pr_err("rpm-regulator driver has not probed yet.\n");
@@ -1761,7 +1746,7 @@ rpm_vreg_init_regulator(const struct rpm_regulator_init_data *pdata,
 	if (rc)
 		goto bail;
 
-	rdev = regulator_register(rdesc, dev, &(pdata->init_data), vreg);
+	rdev = regulator_register(rdesc, dev, &(pdata->init_data), vreg, NULL);
 	if (IS_ERR(rdev)) {
 		rc = PTR_ERR(rdev);
 		pr_err("regulator_register failed: %s, rc=%d\n",

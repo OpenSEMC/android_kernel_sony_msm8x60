@@ -26,6 +26,8 @@
 #include <linux/wakelock.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <mach/board-msm8660.h>
+#include <linux/export.h>
+#include <linux/module.h>
 
 #include "keypad-pmic-fuji.h"
 #include "gpiomux-semc_fuji.h"

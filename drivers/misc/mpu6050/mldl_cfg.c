@@ -49,6 +49,7 @@
 #define RESET   1
 #define STANDBY 1
 
+#define CHARGEPUMP_WAKE 10
 
 /* -------------------------------------------------------------------------- */
 
@@ -563,7 +564,7 @@ static int mpu60xx_pwr_mgmt(struct mldl_cfg *mldl_cfg,
 			return result;
 		}
 		mldl_cfg->inv_mpu_state->status &= ~MPU_GYRO_IS_BYPASSED;
-		msleep(40);
+		msleep(100);
 	}
 
 	/* NOTE : reading both PWR_MGMT_1 and PWR_MGMT_2 for efficiency because
@@ -594,6 +595,7 @@ static int mpu60xx_pwr_mgmt(struct mldl_cfg *mldl_cfg,
 			return result;
 		}
 	}
+	msleep(CHARGEPUMP_WAKE);
 
 	pwr_mgmt[1] &= ~(BIT_STBY_XG | BIT_STBY_YG | BIT_STBY_ZG);
 	if (!(sensors & INV_X_GYRO))
@@ -619,9 +621,6 @@ static int mpu60xx_pwr_mgmt(struct mldl_cfg *mldl_cfg,
 	} else {
 		mldl_cfg->inv_mpu_state->status &= ~MPU_GYRO_IS_SUSPENDED;
 	}
-
-	if (pwr_mgmt[0] != pwr_mgmt_prev[0] && !(pwr_mgmt[0] & BIT_SLEEP))
-		msleep(5);
 
 	return INV_SUCCESS;
 }
@@ -1194,8 +1193,11 @@ static int gyro_resume(struct mldl_cfg *mldl_cfg, void *gyro_handle,
 	}
 	regs[0] = MPUREG_X_OFFS_USRH;
 	for (ii = 0; ii < ARRAY_SIZE(mldl_cfg->mpu_offsets->gyro); ii++) {
-		regs[1 + ii * 2] = 0;
-		regs[1 + ii * 2 + 1] = 0;
+		regs[1 + ii * 2] =
+			(unsigned char)(mldl_cfg->mpu_offsets->gyro[ii] >> 8)
+			& 0xff;
+		regs[1 + ii * 2 + 1] =
+			(unsigned char)(mldl_cfg->mpu_offsets->gyro[ii] & 0xff);
 	}
 	result = inv_serial_write(gyro_handle, mldl_cfg->mpu_chip_info->addr,
 				  7, regs);

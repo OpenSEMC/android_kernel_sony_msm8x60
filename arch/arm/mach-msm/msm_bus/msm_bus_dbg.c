@@ -14,6 +14,7 @@
 #define pr_fmt(fmt) "AXI: %s(): " fmt, __func__
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>

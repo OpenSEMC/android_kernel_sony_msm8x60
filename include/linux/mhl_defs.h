@@ -46,7 +46,7 @@ enum DevCapOffset_e {
 
 /* Version that this chip supports */
 #define MHL_VER_MAJOR			(0x01 << 4)	/* bits 4..7 */
-#define MHL_VER_MINOR			0x02		/* bits 0..3 */
+#define MHL_VER_MINOR			0x01		/* bits 0..3 */
 #define MHL_VERSION			(MHL_VER_MAJOR | MHL_VER_MINOR)
 
 /* Device Category */
@@ -57,10 +57,6 @@ enum DevCapOffset_e {
 #define	MHL_DEV_CAT_SOURCE			0x02
 #define	MHL_DEV_CAT_DONGLE			0x03
 #define	MHL_DEV_CAT_SELF_POWERED_DONGLE		0x13
-
-/* Adopter ID */
-#define MHL_DEV_ADOPTER_ID_H_OFFSET		DEVCAP_OFFSET_ADOPTER_ID_H
-#define MHL_DEV_ADOPTER_ID_L_OFFSET		DEVCAP_OFFSET_ADOPTER_ID_L
 
 /* Video Link Mode */
 #define MHL_DEV_VID_LINK_MODE_OFFSET		DEVCAP_OFFSET_VID_LINK_MODE
@@ -104,10 +100,6 @@ enum DevCapOffset_e {
 
 /* Bandwidth */
 #define MHL_BANDWIDTH_LIMIT			22 /* 225 MHz */
-
-/* Device ID */
-#define MHL_DEV_DEVICE_ID_H_OFFSET		DEVCAP_OFFSET_DEVICE_ID_H
-#define MHL_DEV_DEVICE_ID_L_OFFSET		DEVCAP_OFFSET_DEVICE_ID_L
 
 #define MHL_STATUS_REG_CONNECTED_RDY		0x30
 #define MHL_STATUS_REG_LINK_MODE		0x31

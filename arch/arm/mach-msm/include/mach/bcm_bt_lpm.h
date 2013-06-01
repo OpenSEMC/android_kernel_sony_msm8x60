@@ -20,6 +20,7 @@
  * this driver keeps WAKE asserted during TX. Called with uart
  * spinlock held. */
 extern void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport);
+extern unsigned long serial_flags;
 
 struct bcm_bt_lpm_platform_data {
 	unsigned int gpio_wake;   /* CPU -> BCM wakeup gpio */

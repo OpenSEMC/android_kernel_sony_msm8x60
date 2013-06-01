@@ -8,6 +8,7 @@
  * of the License, or (at your option) any later version.
  */
 
+#include <linux/bug.h>
 #include <linux/leds-as3676_semc.h>
 #include <linux/leds.h>
 
@@ -16,7 +17,7 @@ static struct as3676_platform_led as3676_leds_mapping[] = {
 		.name = "lcd-backlight",
 		.sinks = BIT(AS3676_SINK_01) | BIT(AS3676_SINK_02)
 		| BIT(AS3676_SINK_06),
-		.flags = AS3676_FLAG_PWM_CTRL,
+		.flags = AS3676_FLAG_ALS,
 		.max_current = 20000,
 		.default_brightness = LED_FULL,
 	},
@@ -53,6 +54,6 @@ struct as3676_platform_data as3676_platform_data = {
 	.als_connected = 1,
 	.als_wait = 100,
 	.dls_connected = false,
-	.softdim_enable = false,
+	.softdim_enable = true,
 	.ldo_mV = 2500,
 };

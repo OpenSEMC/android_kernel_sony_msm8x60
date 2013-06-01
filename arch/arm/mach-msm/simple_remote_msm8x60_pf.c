@@ -1,6 +1,7 @@
 /* kernel/arch/arm/mach-msm/simple_remote_msm8x60_pf.c
  *
  * Copyright (C) 2012 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * Authors: Takashi Shiina <takashi.shiina@sonyericsson.com>
  *          Tadashi Kubo <tadashi.kubo@sonyericsson.com>
@@ -23,7 +24,7 @@
 #include <linux/input.h>
 #include <asm/atomic.h>
 #include <linux/bitops.h>
-#include <mach/gpio.h>
+#include <linux/gpio.h>
 #include <linux/mutex.h>
 #include <linux/mfd/marimba.h>
 #include <linux/regulator/consumer.h>
@@ -940,10 +941,14 @@ same_state:
 		enable ? "enabled" : "disabled");
 
 error:
-	if (rc < 0)
+	if (rc < 0) {
 		dev_err(loc_dat->dev,
 			"%s - Failed to fully %s HP Amp\n", __func__,
 			enable ? "enable" : "disable");
+		adie_codec_powerup(0);
+		simple_remote_pf_enable_vregs(0);
+		loc_dat->hpamp_enabled = false;
+	}
 
 	UNLOCK(&loc_dat->lock);
 

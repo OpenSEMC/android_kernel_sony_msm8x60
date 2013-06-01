@@ -2,7 +2,6 @@
  *  linux/include/linux/console.h
  *
  *  Copyright (C) 1993        Hamish Macdonald
- *  Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file COPYING in the main directory of this archive
@@ -78,9 +77,7 @@ extern const struct consw prom_con;	/* SPARC PROM console */
 int con_is_bound(const struct consw *csw);
 int register_con_driver(const struct consw *csw, int first, int last);
 int unregister_con_driver(const struct consw *csw);
-int do_unregister_con_driver(const struct consw *csw);
 int take_over_console(const struct consw *sw, int first, int last, int deflt);
-int do_take_over_console(const struct consw *sw, int first, int last, int deflt);
 void give_up_console(const struct consw *sw);
 #ifdef CONFIG_HW_CONSOLE
 int con_debug_enter(struct vc_data *vc);
@@ -155,13 +152,11 @@ extern int braille_register_console(struct console *, int index,
 		char *console_options, char *braille_options);
 extern int braille_unregister_console(struct console *);
 extern void console_sysfs_notify(void);
-extern int console_suspend_enabled;
+extern bool console_suspend_enabled;
 
 /* Suspend and resume console messages over PM events */
 extern void suspend_console(void);
 extern void resume_console(void);
-
-extern void panic_console(void);
 
 int mda_console_init(void);
 void prom_con_init(void);

@@ -26,23 +26,27 @@
 #include <mach/memory.h>
 #include <mach/msm_iomap.h>
 
-#define L2C_IMEM_ADDR 0x2a03f014
+#define L2_DUMP_OFFSET 0x14
 
 static unsigned long msm_cache_dump_addr;
 
 /*
- * These are dummy pointers so the defintion of l1_cache_dump
- * and l2_cache_dump don't get optimized away. If they aren't
- * referenced, the structure definitions don't show up in the
- * debugging information which is needed for post processing.
+ * These should not actually be dereferenced. There's no
+ * need for a virtual mapping, but the physical address is
+ * necessary.
  */
-static struct l1_cache_dump __used *l1_dump;
-static struct l2_cache_dump __used *l2_dump;
+static struct l1_cache_dump *l1_dump;
+static struct l2_cache_dump *l2_dump;
 
 static int msm_cache_dump_panic(struct notifier_block *this,
 				unsigned long event, void *ptr)
 {
 #ifdef CONFIG_MSM_CACHE_DUMP_ON_PANIC
+	/*
+	 * Clear the bootloader magic so the dumps aren't overwritten
+	 */
+	__raw_writel(0, MSM_IMEM_BASE + L2_DUMP_OFFSET);
+
 	scm_call_atomic1(L1C_SERVICE_ID, CACHE_BUFFER_DUMP_COMMAND_ID, 2);
 	scm_call_atomic1(L1C_SERVICE_ID, CACHE_BUFFER_DUMP_COMMAND_ID, 1);
 #endif
@@ -66,9 +70,6 @@ static int msm_cache_dump_probe(struct platform_device *pdev)
 		unsigned long buf;
 		unsigned long size;
 	} l1_cache_data;
-#ifndef CONFIG_MSM_CACHE_DUMP_ON_PANIC
-	unsigned int *imem_loc;
-#endif
 	void *temp;
 	unsigned long total_size = d->l1_size + d->l2_size;
 
@@ -94,6 +95,8 @@ static int msm_cache_dump_probe(struct platform_device *pdev)
 		pr_err("%s: could not register L1 buffer ret = %d.\n",
 			__func__, ret);
 
+	l1_dump = (struct l1_cache_dump *)msm_cache_dump_addr;
+
 #if defined(CONFIG_MSM_CACHE_DUMP_ON_PANIC)
 	l1_cache_data.buf = msm_cache_dump_addr + d->l1_size;
 	l1_cache_data.size = d->l2_size;
@@ -104,11 +107,12 @@ static int msm_cache_dump_probe(struct platform_device *pdev)
 	if (ret)
 		pr_err("%s: could not register L2 buffer ret = %d.\n",
 			__func__, ret);
-#else
-	imem_loc = ioremap(L2C_IMEM_ADDR, SZ_4K);
-	__raw_writel(msm_cache_dump_addr + d->l1_size, imem_loc);
-	iounmap(imem_loc);
 #endif
+	__raw_writel(msm_cache_dump_addr + d->l1_size,
+			MSM_IMEM_BASE + L2_DUMP_OFFSET);
+
+
+	l2_dump = (struct l2_cache_dump *)(msm_cache_dump_addr + d->l1_size);
 
 	atomic_notifier_chain_register(&panic_notifier_list,
 						&msm_cache_dump_blk);

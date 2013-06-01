@@ -1,14 +1,14 @@
 /*
  * Common function shared by Linux WEXT, cfg80211 and p2p drivers
  *
- * Copyright (C) 1999-2011, Broadcom Corporation
- *
- *         Unless you and Broadcom execute a separate written software license
+ * Copyright (C) 1999-2012, Broadcom Corporation
+ * 
+ *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2 (the "GPL"),
  * available at http://www.broadcom.com/licenses/GPLv2.php, with the
  * following added to such license:
- *
+ * 
  *      As a special exception, the copyright holders of this software give you
  * permission to link this software with independent modules, and to copy and
  * distribute the resulting executable under terms of your choice, provided that
@@ -16,7 +16,7 @@
  * the license of that module.  An independent module is a module which is not
  * derived from this software.  The special exception does not apply to any
  * modifications of the software.
- *
+ * 
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
@@ -53,6 +53,7 @@ s32 wldev_ioctl(
 	s32 ret = 0;
 	struct wl_ioctl ioc;
 
+
 	memset(&ioc, 0, sizeof(ioc));
 	ioc.cmd = cmd;
 	ioc.buf = arg;
@@ -60,6 +61,7 @@ s32 wldev_ioctl(
 	ioc.set = set;
 
 	ret = dhd_ioctl_entry_local(dev, &ioc, cmd);
+
 	return ret;
 }
 
@@ -82,11 +84,10 @@ s32 wldev_iovar_getbuf(
 	void *param, s32 paramlen, void *buf, s32 buflen, struct mutex* buf_sync)
 {
 	s32 ret = 0;
-	s32 iovar_len = 0;
 	if (buf_sync) {
 		mutex_lock(buf_sync);
 	}
-	iovar_len = wldev_mkiovar(iovar_name, param, paramlen, buf, buflen);
+	wldev_mkiovar(iovar_name, param, paramlen, buf, buflen);
 	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, buflen, FALSE);
 	if (buf_sync)
 		mutex_unlock(buf_sync);
@@ -190,16 +191,17 @@ s32 wldev_mkiovar_bsscfg(
 	return iolen;
 
 }
+
 s32 wldev_iovar_getbuf_bsscfg(
 	struct net_device *dev, s8 *iovar_name,
 	void *param, s32 paramlen, void *buf, s32 buflen, s32 bsscfg_idx, struct mutex* buf_sync)
 {
 	s32 ret = 0;
-	s32 iovar_len = 0;
 	if (buf_sync) {
 		mutex_lock(buf_sync);
 	}
-	iovar_len = wldev_mkiovar_bsscfg(iovar_name, param, paramlen, buf, buflen, bsscfg_idx);
+
+	wldev_mkiovar_bsscfg(iovar_name, param, paramlen, buf, buflen, bsscfg_idx);
 	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, buflen, FALSE);
 	if (buf_sync) {
 		mutex_unlock(buf_sync);
@@ -218,7 +220,6 @@ s32 wldev_iovar_setbuf_bsscfg(
 		mutex_lock(buf_sync);
 	}
 	iovar_len = wldev_mkiovar_bsscfg(iovar_name, param, paramlen, buf, buflen, bsscfg_idx);
-
 	ret = wldev_ioctl(dev, WLC_SET_VAR, buf, iovar_len, TRUE);
 	if (buf_sync) {
 		mutex_unlock(buf_sync);

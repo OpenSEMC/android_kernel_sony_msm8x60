@@ -20,7 +20,7 @@
 #include <mach/qdsp6v2/audio_acdb.h>
 
 
-#define MAX_NETWORKS		12
+#define MAX_NETWORKS		15
 
 struct sidetone_atomic_cal {
 	atomic_t	enable;
@@ -617,11 +617,14 @@ static int deregister_memory(void)
 {
 	if (atomic64_read(&acdb_data.mem_len)) {
 		mutex_lock(&acdb_data.acdb_mutex);
+		atomic_set(&acdb_data.vocstrm_total_cal_size, 0);
+		atomic_set(&acdb_data.vocproc_total_cal_size, 0);
+		atomic_set(&acdb_data.vocvol_total_cal_size, 0);
+		atomic64_set(&acdb_data.mem_len, 0);
 		ion_unmap_kernel(acdb_data.ion_client, acdb_data.ion_handle);
 		ion_free(acdb_data.ion_client, acdb_data.ion_handle);
 		ion_client_destroy(acdb_data.ion_client);
 		mutex_unlock(&acdb_data.acdb_mutex);
-		atomic64_set(&acdb_data.mem_len, 0);
 	}
 	return 0;
 }
@@ -643,7 +646,7 @@ static int register_memory(void)
 		goto err;
 	}
 
-	acdb_data.ion_handle = ion_import_fd(acdb_data.ion_client,
+	acdb_data.ion_handle = ion_import_dma_buf(acdb_data.ion_client,
 		atomic_read(&acdb_data.map_handle));
 	if (IS_ERR_OR_NULL(acdb_data.ion_handle)) {
 		pr_err("%s: Could not import map handle!!!\n", __func__);
@@ -666,11 +669,11 @@ static int register_memory(void)
 		goto err_ion_handle;
 	}
 	kvaddr = (unsigned long)kvptr;
-	mutex_unlock(&acdb_data.acdb_mutex);
-
 	atomic64_set(&acdb_data.paddr, paddr);
 	atomic64_set(&acdb_data.kvaddr, kvaddr);
 	atomic64_set(&acdb_data.mem_len, mem_len);
+	mutex_unlock(&acdb_data.acdb_mutex);
+
 	pr_debug("%s done! paddr = 0x%lx, "
 		"kvaddr = 0x%lx, len = x%lx\n",
 		 __func__,

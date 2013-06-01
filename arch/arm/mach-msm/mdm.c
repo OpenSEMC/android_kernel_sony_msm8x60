@@ -124,7 +124,13 @@ static int charm_panic_prep(struct notifier_block *this,
 		pm8xxx_stay_on();
 
 	charm_disable_irqs();
+#if defined (CONFIG_MSM_8X60_FUSION_GPIO_GLITCH)
+	gpio_set_value(AP2MDM_ERRFATAL, 0);
+	mdelay(1);
 	gpio_set_value(AP2MDM_ERRFATAL, 1);
+#else
+	gpio_set_value(AP2MDM_ERRFATAL, 1);
+#endif
 	gpio_set_value(AP2MDM_WAKEUP, 1);
 	for (i = CHARM_MODEM_TIMEOUT; i > 0; i -= CHARM_MODEM_DELTA) {
 		pet_watchdog();
@@ -158,6 +164,12 @@ static long charm_modem_ioctl(struct file *filp, unsigned int cmd,
 	switch (cmd) {
 	case WAKE_CHARM:
 		CHARM_DBG("%s: Powering on\n", __func__);
+		gpio_direction_output(AP2MDM_STATUS, 1);
+#if defined (CONFIG_MSM_8X60_FUSION_GPIO_GLITCH)
+		gpio_direction_output(AP2MDM_ERRFATAL, 1);
+#else
+		gpio_direction_output(AP2MDM_ERRFATAL, 0);
+#endif
 		power_on_charm();
 		break;
 	case CHECK_FOR_BOOT:
@@ -333,8 +345,9 @@ static int __init charm_modem_probe(struct platform_device *pdev)
 	gpio_request(MDM2AP_ERRFATAL, "MDM2AP_ERRFATAL");
 	gpio_request(AP2MDM_WAKEUP, "AP2MDM_WAKEUP");
 
-	gpio_direction_output(AP2MDM_STATUS, 1);
-	gpio_direction_output(AP2MDM_ERRFATAL, 0);
+	gpio_direction_output(AP2MDM_PMIC_RESET_N, 1);
+	gpio_direction_output(AP2MDM_KPDPWR_N, 0);
+
 	gpio_direction_output(AP2MDM_WAKEUP, 0);
 	gpio_direction_input(MDM2AP_STATUS);
 	gpio_direction_input(MDM2AP_ERRFATAL);

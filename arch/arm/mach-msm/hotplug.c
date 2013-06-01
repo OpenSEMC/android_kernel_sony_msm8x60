@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2002 ARM Ltd.
- *  Copyright (c) 2012, Code Aurora Forum. All rights reserved.
  *  All Rights Reserved
+ *  Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,12 +13,13 @@
 #include <linux/cpu.h>
 
 #include <asm/cacheflush.h>
+#include <asm/smp_plat.h>
 #include <asm/vfp.h>
 
+#include <mach/jtag.h>
 #include <mach/msm_rtb.h>
 
 #include "pm.h"
-#include "qdss.h"
 #include "spm.h"
 
 extern volatile int pen_release;
@@ -48,7 +49,7 @@ static inline void platform_do_lowpower(unsigned int cpu)
 	for (;;) {
 
 		msm_pm_cpu_enter_lowpower(cpu);
-		if (pen_release == cpu) {
+		if (pen_release == cpu_logical_map(cpu)) {
 			/*
 			 * OK, proper wakeup, we're done
 			 */
@@ -74,15 +75,7 @@ static inline void platform_do_lowpower(unsigned int cpu)
 
 int platform_cpu_kill(unsigned int cpu)
 {
-	struct completion *killed =
-		&per_cpu(msm_hotplug_devices, cpu).cpu_killed;
-	int ret;
-
-	ret = wait_for_completion_timeout(killed, HZ * 5);
-	if (ret)
-		return ret;
-
-	return msm_pm_wait_cpu_shutdown(cpu);
+	return 1;
 }
 
 /*
@@ -104,7 +97,7 @@ void platform_cpu_die(unsigned int cpu)
 	cpu_enter_lowpower();
 	platform_do_lowpower(cpu);
 
-	pr_notice("CPU%u: %s: normal wakeup\n", cpu, __func__);
+	pr_debug("CPU%u: %s: normal wakeup\n", cpu, __func__);
 	cpu_leave_lowpower();
 }
 
@@ -167,16 +160,19 @@ int msm_platform_secondary_init(unsigned int cpu)
 		return 0;
 	}
 	msm_jtag_restore_state();
-#ifdef CONFIG_VFP
-	vfp_reinit();
+#if defined(CONFIG_VFP) && defined (CONFIG_CPU_PM)
+	vfp_pm_resume();
 #endif
 	ret = msm_spm_set_low_power_mode(MSM_SPM_MODE_CLOCK_GATING, false);
 
 	return ret;
 }
 
-static int __init init_hotplug_notifier(void)
+static int __init init_hotplug(void)
 {
+
+	struct msm_hotplug_device *dev = &__get_cpu_var(msm_hotplug_devices);
+	init_completion(&dev->cpu_killed);
 	return register_hotcpu_notifier(&hotplug_rtb_notifier);
 }
-early_initcall(init_hotplug_notifier);
+early_initcall(init_hotplug);

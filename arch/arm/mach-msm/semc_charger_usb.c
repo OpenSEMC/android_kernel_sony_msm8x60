@@ -25,6 +25,7 @@
 #include <linux/power_supply.h>
 #include <mach/msm_hsusb.h>
 #include <mach/semc_charger_usb.h>
+#include <linux/export.h>
 
 #define CHGUSB_DISC_WAKELOCK_TIMEOUT (HZ * 2) /* 2sec */
 #define CHGUSB_CONN_WAKELOCK_TIMEOUT (HZ * 5) /* 5sec */

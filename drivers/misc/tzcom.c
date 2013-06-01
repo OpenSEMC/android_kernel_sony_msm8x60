@@ -38,6 +38,7 @@
 #include "tzcomi.h"
 
 #define TZCOM_DEV "tzcom"
+#define TZ_TIMER_DELAY (5*HZ)
 
 #define TZSCHEDULER_CMD_ID 1 /* CMD id of the trustzone scheduler */
 
@@ -67,6 +68,12 @@ static s32 sb_out_phys;
 static size_t sb_out_length = 20 * SZ_1K;
 
 static void *pil;
+
+struct timer_list tz_timer;
+struct workqueue_struct *tzcom_wq;
+struct work_struct tzcom_idle;
+static DEFINE_MUTEX(idle_lock);
+static uint32_t tzcom_perf_flag;
 
 static atomic_t svc_instance_ctr = ATOMIC_INIT(0);
 static DEFINE_MUTEX(sb_in_lock);
@@ -100,6 +107,21 @@ struct tzcom_data_t {
 	atomic_t          ioctl_count;
 };
 
+static int __tzcom_enable_bus_scaling(void)
+{
+	int ret = 0;
+	if (!tzcom_perf_client)
+		return -EINVAL;
+	if (tzcom_perf_flag == 0) {
+		ret = msm_bus_scale_client_update_request(
+				tzcom_perf_client, 1);
+		if (!ret)
+			tzcom_perf_flag = 1;
+	}
+	mod_timer(&tz_timer, jiffies + TZ_TIMER_DELAY);
+	return ret;
+}
+
 static int tzcom_enable_bus_scaling(void)
 {
 	int ret = 0;
@@ -107,8 +129,7 @@ static int tzcom_enable_bus_scaling(void)
 		return -EINVAL;
 	mutex_lock(&tzcom_bw_mutex);
 	if (!tzcom_bw_count) {
-		ret = msm_bus_scale_client_update_request(
-				tzcom_perf_client, 1);
+		ret = __tzcom_enable_bus_scaling();
 		if (ret) {
 			pr_err("Bandwidth request failed (%d)\n", ret);
 		} else {
@@ -125,6 +146,16 @@ static int tzcom_enable_bus_scaling(void)
 	return ret;
 }
 
+static void __tzcom_disable_bus_scaling(void)
+{
+	if (!tzcom_perf_client)
+		return ;
+	if (tzcom_perf_flag) {
+		msm_bus_scale_client_update_request(tzcom_perf_client, 0);
+		tzcom_perf_flag = 0;
+	}
+}
+
 static void tzcom_disable_bus_scaling(void)
 {
 	if (!tzcom_perf_client)
@@ -133,8 +164,7 @@ static void tzcom_disable_bus_scaling(void)
 	mutex_lock(&tzcom_bw_mutex);
 	if (tzcom_bw_count > 0)
 		if (tzcom_bw_count-- == 1) {
-			msm_bus_scale_client_update_request(tzcom_perf_client,
-								0);
+			__tzcom_disable_bus_scaling();
 			clk_disable(tzcom_bus_clk);
 		}
 	mutex_unlock(&tzcom_bw_mutex);
@@ -553,7 +583,7 @@ static int __tzcom_update_with_phy_addr(
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if (req->ifd_data[i].fd != 0) {
 			/* Get the handle of the shared fd */
-			ihandle = ion_import_fd(ion_clnt, req->ifd_data[i].fd);
+			ihandle = ion_import_dma_buf(ion_clnt, req->ifd_data[i].fd);
 			if (ihandle == NULL) {
 				PERR("Ion client can't retrieve the handle\n");
 				return -ENOMEM;
@@ -831,7 +861,7 @@ static long tzcom_ioctl(struct file *file, unsigned cmd,
 		PERR("Aborting tzcom driver");
 		return -ENODEV;
 	}
-
+	__tzcom_enable_bus_scaling();
 	switch (cmd) {
 	case TZCOM_IOCTL_REGISTER_SERVICE_REQ: {
 		PDEBUG("ioctl register_service_req()");
@@ -926,7 +956,7 @@ static int tzcom_open(struct inode *inode, struct file *file)
 	PDEBUG("In here");
 
 	ret = tzcom_enable_bus_scaling();
-
+	__tzcom_enable_bus_scaling();
 	if (pil == NULL) {
 		pil = pil_get("tzapps");
 		if (IS_ERR(pil)) {
@@ -1061,6 +1091,18 @@ static int tzcom_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static void tzcom_timer(unsigned long data)
+{
+	queue_work(tzcom_wq, &tzcom_idle);
+}
+
+static void tzcom_work_func(struct work_struct *work)
+{
+	mutex_lock(&idle_lock);
+	__tzcom_disable_bus_scaling();
+	mutex_unlock(&idle_lock);
+}
+
 static struct msm_bus_paths tzcom_bw_table[] = {
 	{
 		.vectors = (struct msm_bus_vectors[]){
@@ -1189,6 +1231,15 @@ static int __init tzcom_init(void)
 		pr_warn("Enabled clock\n");
 		clk_set_rate(tzcom_bus_clk, 64000000);
 	}
+
+	tzcom_wq = create_singlethread_workqueue("tzcom_w");
+	if (tzcom_wq == NULL) {
+		pr_err("%s: No memory for tzcom_w\n",
+			__func__);
+		return 0;
+	}
+	setup_timer(&tz_timer, tzcom_timer, (unsigned long)&tzcom_perf_flag);
+	INIT_WORK(&tzcom_idle, tzcom_work_func);
 
 	return 0;
 

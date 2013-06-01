@@ -75,7 +75,7 @@
 #include <linux/cpuset.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/nsproxy.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
@@ -93,6 +93,7 @@
 
 #include <asm/tlbflush.h>
 #include <asm/uaccess.h>
+#include <linux/random.h>
 
 #include "internal.h"
 
@@ -110,7 +111,7 @@ enum zone_type policy_zone = 0;
 /*
  * run-time system-wide default policy => local allocation
  */
-struct mempolicy default_policy = {
+static struct mempolicy default_policy = {
 	.refcnt = ATOMIC_INIT(1), /* never free it */
 	.mode = MPOL_PREFERRED,
 	.flags = MPOL_F_LOCAL,
@@ -606,39 +607,24 @@ check_range(struct mm_struct *mm, unsigned long start, unsigned long end,
 	return first;
 }
 
-/*
- * Apply policy to a single VMA
- * This must be called with the mmap_sem held for writing.
- */
-static int vma_replace_policy(struct vm_area_struct *vma,
-						struct mempolicy *pol)
+/* Apply policy to a single VMA */
+static int policy_vma(struct vm_area_struct *vma, struct mempolicy *new)
 {
-	int err;
-	struct mempolicy *old;
-	struct mempolicy *new;
+	int err = 0;
+	struct mempolicy *old = vma->vm_policy;
 
 	pr_debug("vma %lx-%lx/%lx vm_ops %p vm_file %p set_policy %p\n",
 		 vma->vm_start, vma->vm_end, vma->vm_pgoff,
 		 vma->vm_ops, vma->vm_file,
 		 vma->vm_ops ? vma->vm_ops->set_policy : NULL);
 
-	new = mpol_dup(pol);
-	if (IS_ERR(new))
-		return PTR_ERR(new);
-
-	if (vma->vm_ops && vma->vm_ops->set_policy) {
+	if (vma->vm_ops && vma->vm_ops->set_policy)
 		err = vma->vm_ops->set_policy(vma, new);
-		if (err)
-			goto err_out;
+	if (!err) {
+		mpol_get(new);
+		vma->vm_policy = new;
+		mpol_put(old);
 	}
-
-	old = vma->vm_policy;
-	vma->vm_policy = new; /* protected by mmap_sem */
-	mpol_put(old);
-
-	return 0;
- err_out:
-	mpol_put(new);
 	return err;
 }
 
@@ -654,18 +640,27 @@ static int mbind_range(struct mm_struct *mm, unsigned long start,
 	unsigned long vmstart;
 	unsigned long vmend;
 
-	vma = find_vma_prev(mm, start, &prev);
+	vma = find_vma(mm, start);
 	if (!vma || vma->vm_start > start)
 		return -EFAULT;
+
+	prev = vma->vm_prev;
+	if (start > vma->vm_start)
+		prev = vma;
 
 	for (; vma && vma->vm_start < end; prev = vma, vma = next) {
 		next = vma->vm_next;
 		vmstart = max(start, vma->vm_start);
 		vmend   = min(end, vma->vm_end);
 
-		pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
+		if (mpol_equal(vma_policy(vma), new_pol))
+			continue;
+
+		pgoff = vma->vm_pgoff +
+			((vmstart - vma->vm_start) >> PAGE_SHIFT);
 		prev = vma_merge(mm, prev, vmstart, vmend, vma->vm_flags,
-				  vma->anon_vma, vma->vm_file, pgoff, new_pol);
+				  vma->anon_vma, vma->vm_file, pgoff,
+				  new_pol);
 		if (prev) {
 			vma = prev;
 			next = vma->vm_next;
@@ -681,7 +676,7 @@ static int mbind_range(struct mm_struct *mm, unsigned long start,
 			if (err)
 				goto out;
 		}
-		err = vma_replace_policy(vma, new_pol);
+		err = policy_vma(vma, new_pol);
 		if (err)
 			goto out;
 	}
@@ -1328,12 +1323,9 @@ SYSCALL_DEFINE4(migrate_pages, pid_t, pid, unsigned long, maxnode,
 		err = -ESRCH;
 		goto out;
 	}
-	mm = get_task_mm(task);
-	rcu_read_unlock();
+	get_task_struct(task);
 
 	err = -EINVAL;
-	if (!mm)
-		goto out;
 
 	/*
 	 * Check if this process has the right to modify the specified
@@ -1341,14 +1333,13 @@ SYSCALL_DEFINE4(migrate_pages, pid_t, pid, unsigned long, maxnode,
 	 * capabilities, superuser privileges or the same
 	 * userid as the target process.
 	 */
-	rcu_read_lock();
 	tcred = __task_cred(task);
 	if (cred->euid != tcred->suid && cred->euid != tcred->uid &&
 	    cred->uid  != tcred->suid && cred->uid  != tcred->uid &&
 	    !capable(CAP_SYS_NICE)) {
 		rcu_read_unlock();
 		err = -EPERM;
-		goto out;
+		goto out_put;
 	}
 	rcu_read_unlock();
 
@@ -1356,26 +1347,39 @@ SYSCALL_DEFINE4(migrate_pages, pid_t, pid, unsigned long, maxnode,
 	/* Is the user allowed to access the target nodes? */
 	if (!nodes_subset(*new, task_nodes) && !capable(CAP_SYS_NICE)) {
 		err = -EPERM;
-		goto out;
+		goto out_put;
 	}
 
 	if (!nodes_subset(*new, node_states[N_HIGH_MEMORY])) {
 		err = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	err = security_task_movememory(task);
 	if (err)
+		goto out_put;
+
+	mm = get_task_mm(task);
+	put_task_struct(task);
+
+	if (!mm) {
+		err = -EINVAL;
 		goto out;
+	}
 
 	err = do_migrate_pages(mm, old, new,
 		capable(CAP_SYS_NICE) ? MPOL_MF_MOVE_ALL : MPOL_MF_MOVE);
+
+	mmput(mm);
 out:
-	if (mm)
-		mmput(mm);
 	NODEMASK_SCRATCH_FREE(scratch);
 
 	return err;
+
+out_put:
+	put_task_struct(task);
+	goto out;
+
 }
 
 
@@ -1426,7 +1430,9 @@ asmlinkage long compat_sys_get_mempolicy(int __user *policy,
 	err = sys_get_mempolicy(policy, nm, nr_bits+1, addr, flags);
 
 	if (!err && nmask) {
-		err = copy_from_user(bm, nm, alloc_size);
+		unsigned long copy_size;
+		copy_size = min_t(unsigned long, sizeof(bm), alloc_size);
+		err = copy_from_user(bm, nm, copy_size);
 		/* ensure entire bitmap is zeroed */
 		err |= clear_user(nmask, ALIGN(maxnode-1, 8) / 8);
 		err |= compat_put_bitmap(nmask, bm, nr_bits);
@@ -1511,18 +1517,8 @@ struct mempolicy *get_vma_policy(struct task_struct *task,
 									addr);
 			if (vpol)
 				pol = vpol;
-		} else if (vma->vm_policy) {
+		} else if (vma->vm_policy)
 			pol = vma->vm_policy;
-
-			/*
-			 * shmem_alloc_page() passes MPOL_F_SHARED policy with
-			 * a pseudo vma whose vma->vm_ops=NULL. Take a reference
-			 * count on these policies which will be dropped by
-			 * mpol_cond_put() later
-			 */
-			if (mpol_needs_cond_ref(pol))
-				mpol_get(pol);
-		}
 	}
 	if (!pol)
 		pol = &default_policy;
@@ -1668,6 +1664,21 @@ static inline unsigned interleave_nid(struct mempolicy *pol,
 		return offset_il_node(pol, vma, off);
 	} else
 		return interleave_nodes(pol);
+}
+
+/*
+ * Return the bit number of a random bit set in the nodemask.
+ * (returns -1 if nodemask is empty)
+ */
+int node_random(const nodemask_t *maskp)
+{
+	int w, bit = -1;
+
+	w = nodes_weight(*maskp);
+	if (w)
+		bit = bitmap_ord_to_pos(maskp->bits,
+			get_random_int() % w, MAX_NUMNODES);
+	return bit;
 }
 
 #ifdef CONFIG_HUGETLBFS
@@ -1973,29 +1984,51 @@ struct mempolicy *__mpol_dup(struct mempolicy *old)
 	return new;
 }
 
+/*
+ * If *frompol needs [has] an extra ref, copy *frompol to *tompol ,
+ * eliminate the * MPOL_F_* flags that require conditional ref and
+ * [NOTE!!!] drop the extra ref.  Not safe to reference *frompol directly
+ * after return.  Use the returned value.
+ *
+ * Allows use of a mempolicy for, e.g., multiple allocations with a single
+ * policy lookup, even if the policy needs/has extra ref on lookup.
+ * shmem_readahead needs this.
+ */
+struct mempolicy *__mpol_cond_copy(struct mempolicy *tompol,
+						struct mempolicy *frompol)
+{
+	if (!mpol_needs_cond_ref(frompol))
+		return frompol;
+
+	*tompol = *frompol;
+	tompol->flags &= ~MPOL_F_SHARED;	/* copy doesn't need unref */
+	__mpol_put(frompol);
+	return tompol;
+}
+
 /* Slow path of a mempolicy comparison */
-int __mpol_equal(struct mempolicy *a, struct mempolicy *b)
+bool __mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {
 	if (!a || !b)
-		return 0;
+		return false;
 	if (a->mode != b->mode)
-		return 0;
+		return false;
 	if (a->flags != b->flags)
-		return 0;
+		return false;
 	if (mpol_store_user_nodemask(a))
 		if (!nodes_equal(a->w.user_nodemask, b->w.user_nodemask))
-			return 0;
+			return false;
 
 	switch (a->mode) {
 	case MPOL_BIND:
 		/* Fall through */
 	case MPOL_INTERLEAVE:
-		return nodes_equal(a->v.nodes, b->v.nodes);
+		return !!nodes_equal(a->v.nodes, b->v.nodes);
 	case MPOL_PREFERRED:
 		return a->v.preferred_node == b->v.preferred_node;
 	default:
 		BUG();
-		return 0;
+		return false;
 	}
 }
 
@@ -2009,7 +2042,7 @@ int __mpol_equal(struct mempolicy *a, struct mempolicy *b)
  */
 
 /* lookup first element intersecting start-end */
-/* Caller holds sp->mutex */
+/* Caller holds sp->lock */
 static struct sp_node *
 sp_lookup(struct shared_policy *sp, unsigned long start, unsigned long end)
 {
@@ -2073,50 +2106,36 @@ mpol_shared_policy_lookup(struct shared_policy *sp, unsigned long idx)
 
 	if (!sp->root.rb_node)
 		return NULL;
-	mutex_lock(&sp->mutex);
+	spin_lock(&sp->lock);
 	sn = sp_lookup(sp, idx, idx+1);
 	if (sn) {
 		mpol_get(sn->policy);
 		pol = sn->policy;
 	}
-	mutex_unlock(&sp->mutex);
+	spin_unlock(&sp->lock);
 	return pol;
-}
-
-static void sp_free(struct sp_node *n)
-{
-	mpol_put(n->policy);
-	kmem_cache_free(sn_cache, n);
 }
 
 static void sp_delete(struct shared_policy *sp, struct sp_node *n)
 {
 	pr_debug("deleting %lx-l%lx\n", n->start, n->end);
 	rb_erase(&n->nd, &sp->root);
-	sp_free(n);
+	mpol_put(n->policy);
+	kmem_cache_free(sn_cache, n);
 }
 
 static struct sp_node *sp_alloc(unsigned long start, unsigned long end,
 				struct mempolicy *pol)
 {
-	struct sp_node *n;
-	struct mempolicy *newpol;
+	struct sp_node *n = kmem_cache_alloc(sn_cache, GFP_KERNEL);
 
-	n = kmem_cache_alloc(sn_cache, GFP_KERNEL);
 	if (!n)
 		return NULL;
-
-	newpol = mpol_dup(pol);
-	if (IS_ERR(newpol)) {
-		kmem_cache_free(sn_cache, n);
-		return NULL;
-	}
-	newpol->flags |= MPOL_F_SHARED;
-
 	n->start = start;
 	n->end = end;
-	n->policy = newpol;
-
+	mpol_get(pol);
+	pol->flags |= MPOL_F_SHARED;	/* for unref */
+	n->policy = pol;
 	return n;
 }
 
@@ -2124,10 +2143,10 @@ static struct sp_node *sp_alloc(unsigned long start, unsigned long end,
 static int shared_policy_replace(struct shared_policy *sp, unsigned long start,
 				 unsigned long end, struct sp_node *new)
 {
-	struct sp_node *n;
-	int ret = 0;
+	struct sp_node *n, *new2 = NULL;
 
-	mutex_lock(&sp->mutex);
+restart:
+	spin_lock(&sp->lock);
 	n = sp_lookup(sp, start, end);
 	/* Take care of old policies in the same range. */
 	while (n && n->start < end) {
@@ -2140,14 +2159,16 @@ static int shared_policy_replace(struct shared_policy *sp, unsigned long start,
 		} else {
 			/* Old policy spanning whole new range. */
 			if (n->end > end) {
-				struct sp_node *new2;
-				new2 = sp_alloc(end, n->end, n->policy);
 				if (!new2) {
-					ret = -ENOMEM;
-					goto out;
+					spin_unlock(&sp->lock);
+					new2 = sp_alloc(end, n->end, n->policy);
+					if (!new2)
+						return -ENOMEM;
+					goto restart;
 				}
 				n->end = start;
 				sp_insert(sp, new2);
+				new2 = NULL;
 				break;
 			} else
 				n->end = start;
@@ -2158,9 +2179,12 @@ static int shared_policy_replace(struct shared_policy *sp, unsigned long start,
 	}
 	if (new)
 		sp_insert(sp, new);
-out:
-	mutex_unlock(&sp->mutex);
-	return ret;
+	spin_unlock(&sp->lock);
+	if (new2) {
+		mpol_put(new2->policy);
+		kmem_cache_free(sn_cache, new2);
+	}
+	return 0;
 }
 
 /**
@@ -2178,7 +2202,7 @@ void mpol_shared_policy_init(struct shared_policy *sp, struct mempolicy *mpol)
 	int ret;
 
 	sp->root = RB_ROOT;		/* empty tree == default mempolicy */
-	mutex_init(&sp->mutex);
+	spin_lock_init(&sp->lock);
 
 	if (mpol) {
 		struct vm_area_struct pvma;
@@ -2232,7 +2256,7 @@ int mpol_set_shared_policy(struct shared_policy *info,
 	}
 	err = shared_policy_replace(info, vma->vm_pgoff, vma->vm_pgoff+sz, new);
 	if (err && new)
-		sp_free(new);
+		kmem_cache_free(sn_cache, new);
 	return err;
 }
 
@@ -2244,14 +2268,16 @@ void mpol_free_shared_policy(struct shared_policy *p)
 
 	if (!p->root.rb_node)
 		return;
-	mutex_lock(&p->mutex);
+	spin_lock(&p->lock);
 	next = rb_first(&p->root);
 	while (next) {
 		n = rb_entry(next, struct sp_node, nd);
 		next = rb_next(&n->nd);
-		sp_delete(p, n);
+		rb_erase(&n->nd, &p->root);
+		mpol_put(n->policy);
+		kmem_cache_free(sn_cache, n);
 	}
-	mutex_unlock(&p->mutex);
+	spin_unlock(&p->lock);
 }
 
 /* assumes fs == KERNEL_DS */
@@ -2308,7 +2334,8 @@ void numa_default_policy(void)
  */
 
 /*
- * "local" is implemented internally by MPOL_PREFERRED with MPOL_F_LOCAL flag.
+ * "local" is pseudo-policy:  MPOL_PREFERRED with MPOL_F_LOCAL flag
+ * Used only for mpol_parse_str() and mpol_to_str()
  */
 #define MPOL_LOCAL MPOL_MAX
 static const char * const policy_modes[] =
@@ -2323,21 +2350,28 @@ static const char * const policy_modes[] =
 
 #ifdef CONFIG_TMPFS
 /**
- * mpol_parse_str - parse string to mempolicy, for tmpfs mpol mount option.
+ * mpol_parse_str - parse string to mempolicy
  * @str:  string containing mempolicy to parse
  * @mpol:  pointer to struct mempolicy pointer, returned on success.
- * @unused:  redundant argument, to be removed later.
+ * @no_context:  flag whether to "contextualize" the mempolicy
  *
  * Format of input:
  *	<mode>[=<flags>][:<nodelist>]
  *
+ * if @no_context is true, save the input nodemask in w.user_nodemask in
+ * the returned mempolicy.  This will be used to "clone" the mempolicy in
+ * a specific context [cpuset] at a later time.  Used to parse tmpfs mpol
+ * mount option.  Note that if 'static' or 'relative' mode flags were
+ * specified, the input nodemask will already have been saved.  Saving
+ * it again is redundant, but safe.
+ *
  * On success, returns 0, else 1
  */
-int mpol_parse_str(char *str, struct mempolicy **mpol, int unused)
+int mpol_parse_str(char *str, struct mempolicy **mpol, int no_context)
 {
 	struct mempolicy *new = NULL;
 	unsigned short mode;
-	unsigned short mode_flags;
+	unsigned short uninitialized_var(mode_flags);
 	nodemask_t nodes;
 	char *nodelist = strchr(str, ':');
 	char *flags = strchr(str, '=');
@@ -2425,23 +2459,24 @@ int mpol_parse_str(char *str, struct mempolicy **mpol, int unused)
 	if (IS_ERR(new))
 		goto out;
 
-	/*
-	 * Save nodes for mpol_to_str() to show the tmpfs mount options
-	 * for /proc/mounts, /proc/pid/mounts and /proc/pid/mountinfo.
-	 */
-	if (mode != MPOL_PREFERRED)
-		new->v.nodes = nodes;
-	else if (nodelist)
-		new->v.preferred_node = first_node(nodes);
-	else
-		new->flags |= MPOL_F_LOCAL;
-
-	/*
-	 * Save nodes for contextualization: this will be used to "clone"
-	 * the mempolicy in a specific context [cpuset] at a later time.
-	 */
-	new->w.user_nodemask = nodes;
-
+	if (no_context) {
+		/* save for contextualization */
+		new->w.user_nodemask = nodes;
+	} else {
+		int ret;
+		NODEMASK_SCRATCH(scratch);
+		if (scratch) {
+			task_lock(current);
+			ret = mpol_set_nodemask(new, &nodes, scratch);
+			task_unlock(current);
+		} else
+			ret = -ENOMEM;
+		NODEMASK_SCRATCH_FREE(scratch);
+		if (ret) {
+			mpol_put(new);
+			goto out;
+		}
+	}
 	err = 0;
 
 out:
@@ -2461,13 +2496,13 @@ out:
  * @buffer:  to contain formatted mempolicy string
  * @maxlen:  length of @buffer
  * @pol:  pointer to mempolicy to be formatted
- * @unused:  redundant argument, to be removed later.
+ * @no_context:  "context free" mempolicy - use nodemask in w.user_nodemask
  *
  * Convert a mempolicy into a string.
  * Returns the number of characters in buffer (if positive)
  * or an error (negative)
  */
-int mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol, int unused)
+int mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol, int no_context)
 {
 	char *p = buffer;
 	int l;
@@ -2493,7 +2528,7 @@ int mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol, int unused)
 	case MPOL_PREFERRED:
 		nodes_clear(nodes);
 		if (flags & MPOL_F_LOCAL)
-			mode = MPOL_LOCAL;
+			mode = MPOL_LOCAL;	/* pseudo-policy */
 		else
 			node_set(pol->v.preferred_node, nodes);
 		break;
@@ -2501,11 +2536,14 @@ int mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol, int unused)
 	case MPOL_BIND:
 		/* Fall through */
 	case MPOL_INTERLEAVE:
-		nodes = pol->v.nodes;
+		if (no_context)
+			nodes = pol->w.user_nodemask;
+		else
+			nodes = pol->v.nodes;
 		break;
 
 	default:
-		return -EINVAL;
+		BUG();
 	}
 
 	l = strlen(policy_modes[mode]);

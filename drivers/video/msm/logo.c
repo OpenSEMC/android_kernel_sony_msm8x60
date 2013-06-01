@@ -24,9 +24,6 @@
 #include <linux/irq.h>
 #include <asm/system.h>
 
-#include "mdp.h"
-#include "mdp4.h"
-
 #define fb_width(fb)	((fb)->var.xres)
 #define fb_linewidth(fb) \
 	((fb)->fix.line_length / (fb_depth(fb) == 2 ? 2 : 4))
@@ -111,21 +108,12 @@ int load_565rle_image(char *filename, bool bf_supported)
 				(line_pos + n > width ? width-line_pos : n);
 
 			if (fb_depth(info) == 2)
-				memset16(bits, swab16(ptr[1]), j << 1);
+				memset16(bits, ptr[1], j << 1);
 			else {
 				unsigned int widepixel = ptr[1];
-				/*
-				 * Format is RGBA, but fb is big
-				 * endian so we should make widepixel
-				 * as ABGR.
-				 */
-				widepixel =
-					/* red :   f800 -> 000000f8 */
-					(widepixel & 0xf800) >> 8 |
-					/* green : 07e0 -> 0000fc00 */
-					(widepixel & 0x07e0) << 5 |
-					/* blue :  001f -> 00f80000 */
-					(widepixel & 0x001f) << 19;
+				widepixel = (widepixel & 0x001f) << (19-0) |
+						(widepixel & 0x07e0) << (10-5) |
+						(widepixel & 0xf800) >> (11-3);
 				memset32(bits, widepixel, j << 2);
 			}
 			bits += j * fb_depth(info);
@@ -162,10 +150,7 @@ static void __init draw_logo(void)
 
 int __init logo_init(void)
 {
-	boolean bf_supported;
-	bf_supported = mdp4_overlay_borderfill_supported();
-
-	if (!load_565rle_image(INIT_IMAGE_FILE, bf_supported))
+	if (!load_565rle_image(INIT_IMAGE_FILE, 0))
 		draw_logo();
 
 	return 0;

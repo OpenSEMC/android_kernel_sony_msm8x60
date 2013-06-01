@@ -11,6 +11,7 @@
  */
 #include <sound/soc.h>
 #include <sound/jack.h>
+#include <linux/mfd/wcd9xxx/wcd9xxx-slimslave.h>
 
 #define TABLA_NUM_REGISTERS 0x400
 #define TABLA_MAX_REGISTER (TABLA_NUM_REGISTERS-1)
@@ -43,7 +44,6 @@ enum tabla_micbias_num {
 	TABLA_MICBIAS2,
 	TABLA_MICBIAS3,
 	TABLA_MICBIAS4,
-	TABLA_NUM_MICBIAS,
 };
 
 enum tabla_pid_current {
@@ -176,6 +176,8 @@ struct tabla_mbhc_config {
 	unsigned int gpio;
 	unsigned int gpio_irq;
 	int gpio_level_insert;
+	/* swap_gnd_mic returns true if extern GND/MIC swap switch toggled */
+	bool (*swap_gnd_mic) (struct snd_soc_codec *);
 };
 
 extern int tabla_hs_detect(struct snd_soc_codec *codec,

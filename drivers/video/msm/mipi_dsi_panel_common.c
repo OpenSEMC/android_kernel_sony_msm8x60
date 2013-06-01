@@ -1,7 +1,6 @@
 /* drivers/video/msm/mipi_dsi_panel_common.c
  *
  * Copyright (C) [2011] Sony Ericsson Mobile Communications AB.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2; as
@@ -12,7 +11,6 @@
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mipi_dsi_panel.h"
-#include "mdp4.h"
 
 void mipi_dsi_set_default_panel(struct mipi_dsi_data *dsi_data)
 {
@@ -24,10 +22,10 @@ void mipi_dsi_set_default_panel(struct mipi_dsi_data *dsi_data)
 	MSM_FB_INFO("default panel: %s\n", dsi_data->panel->name);
 	dsi_data->panel_data.panel_info =
 		*dsi_data->panel->pctrl->get_panel_info();
-	//	dsi_data->panel_data.panel_info.width =
-	//		dsi_data->panel->width;
-	//	dsi_data->panel_data.panel_info.height =
-	//		dsi_data->panel->height;
+	dsi_data->panel_data.panel_info.width =
+		dsi_data->panel->width;
+	dsi_data->panel_data.panel_info.height =
+		dsi_data->panel->height;
 }
 
 static int panel_id_reg_check(struct msm_fb_data_type *mfd, struct dsi_buf *ptx,
@@ -58,14 +56,11 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 	int ret;
 	struct mipi_dsi_data *dsi_data;
 
-	printk("PL:mipi_dsi_detect_panel\n");
 	dsi_data = platform_get_drvdata(mfd->panel_pdev);
 
 	mipi_dsi_op_mode_config(DSI_CMD_MODE);
-	printk("PL:mipi_dsi_detect_panel, dsi_data->default_panels = 0x%X\n", (unsigned)dsi_data->default_panels);
 	if (dsi_data->default_panels[0] != NULL) {
 		for (i = 0; dsi_data->default_panels[i]; i++) {
-		  printk("PL:id_reg_check(%d)\n", i);
 			ret = panel_id_reg_check(mfd, &dsi_data->tx_buf,
 						 &dsi_data->rx_buf,
 						 dsi_data->default_panels[i]);
@@ -74,7 +69,6 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 		}
 
 		if (dsi_data->default_panels[i]) {
-		  printk("PL:dsi_data->default_panels[i] is set\n");
 			dsi_data->panel = dsi_data->default_panels[i];
 			dev_info(&mfd->panel_pdev->dev,
 				"found panel vendor: %s\n",
@@ -87,7 +81,6 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 	}
 
 	for (i = 0; dsi_data->panels[i]; i++) {
-	  printk("PL:dsi_data->panels[%d], id_reg_check\n", i);
 		ret = panel_id_reg_check(mfd, &dsi_data->tx_buf,
 					 &dsi_data->rx_buf,
 					 dsi_data->panels[i]);
@@ -96,7 +89,6 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 	}
 
 	if (dsi_data->panels[i]) {
-	  printk("PL: using panel[%d]\n", i);
 		dsi_data->panel = dsi_data->panels[i];
 		dev_info(&mfd->panel_pdev->dev, "found panel: %s\n",
 			 dsi_data->panel->name);
@@ -105,22 +97,17 @@ struct msm_panel_info *mipi_dsi_detect_panel(
 		return NULL;
 	}
 
-	printk("PL:setting dsi_data->panel_data.panel_info\n");
-
 	dsi_data->panel_data.panel_info =
 		*dsi_data->panel->pctrl->get_panel_info();
-	//	dsi_data->panel_data.panel_info.width =
-	//		dsi_data->panel->width;
-	//	dsi_data->panel_data.panel_info.height =
-	//		dsi_data->panel->height;
+	dsi_data->panel_data.panel_info.width =
+		dsi_data->panel->width;
+	dsi_data->panel_data.panel_info.height =
+		dsi_data->panel->height;
 	dsi_data->panel_data.panel_info.mipi.dsi_pclk_rate =
 		mfd->panel_info.mipi.dsi_pclk_rate;
-	
-	printk("PL:doing op_mode_config\n");
 	mipi_dsi_op_mode_config
 		(dsi_data->panel_data.panel_info.mipi.mode);
 
-	printk("PL:returning!\n");
 	return &dsi_data->panel_data.panel_info;
 }
 
@@ -211,43 +198,6 @@ int mipi_dsi_update_panel(struct platform_device *pdev)
 	return 0;
 }
 
-int mipi_dsi_eco_mode_switch(struct msm_fb_data_type *mfd)
-{
-	int ret = 0;
-	struct mipi_dsi_data *dsi_data;
-	struct dsi_controller *pctrl;
-
-	dsi_data = platform_get_drvdata(mfd->panel_pdev);
-	if (!dsi_data || !dsi_data->lcd_power) {
-		ret = -ENODEV;
-		goto eco_mode_switch_fail;
-	}
-	pctrl = dsi_data->panel->pctrl;
-
-	mipi_set_tx_power_mode(0);
-
-	if (dsi_data->eco_mode_on && pctrl->eco_mode_gamma_cmds) {
-		mipi_dsi_buf_init(&dsi_data->tx_buf);
-		mipi_dsi_cmds_tx(&dsi_data->tx_buf,
-			pctrl->eco_mode_gamma_cmds,
-			pctrl->eco_mode_gamma_cmds_size);
-		dev_info(&mfd->panel_pdev->dev, "ECO MODE ON\n");
-	} else if (pctrl->normal_gamma_cmds) {
-		mipi_dsi_buf_init(&dsi_data->tx_buf);
-		mipi_dsi_cmds_tx(&dsi_data->tx_buf,
-			pctrl->normal_gamma_cmds,
-			pctrl->normal_gamma_cmds_size);
-		dev_info(&mfd->panel_pdev->dev, "ECO MODE OFF\n");
-	}
-
-	mipi_set_tx_power_mode(1);
-
-	return ret;
-
-eco_mode_switch_fail:
-	return ret;
-}
-
 static ssize_t show_eco_mode(struct device *dev,
 	struct device_attribute *attr,
 	char *buf)
@@ -292,8 +242,26 @@ static ssize_t store_eco_mode(struct device *dev,
 	else
 		dsi_data->eco_mode_on = false;
 
-	if (mfd->panel_power_on)
-		dsi_data->eco_mode_switch(mfd);
+	if (mfd->panel_power_on) {
+		int curr_pwr_state;
+
+		mfd->op_enable = FALSE;
+		curr_pwr_state = mfd->panel_power_on;
+		mfd->panel_power_on = FALSE;
+
+		msleep(ONE_FRAME_TRANSMIT_WAIT_MS);
+		ret = pdata->off(mfd->pdev);
+		if (ret)
+			mfd->panel_power_on = curr_pwr_state;
+
+		mfd->op_enable = TRUE;
+	}
+
+	if (!mfd->panel_power_on) {
+		pdata->on(mfd->pdev);
+		if (ret == 0)
+			mfd->panel_power_on = TRUE;
+	}
 
 exit:
 	ret = strnlen(buf, count);

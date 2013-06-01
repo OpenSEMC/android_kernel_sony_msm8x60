@@ -21,6 +21,8 @@
 #include <linux/msm_adc.h>
 #include <linux/hrtimer.h>
 #include <asm/atomic.h>
+#include <linux/export.h>
+#include <linux/module.h>
 
 #include <mach/semc_battery_data.h>
 

@@ -17,7 +17,7 @@ use warnings;
 use Cwd 'abs_path';
 use File::Copy;
 
-my @supported_platforms = ("blue");
+my @supported_platforms = ("fuji");
 my $kernel_dir;
 my $config_dir;
 my @products = ();
@@ -89,7 +89,7 @@ sub apply_modification($$$)
 	# file. The kernel build system will later move it to the correct
 	# location and handle any duplicate entries. It will also perform
 	# validation of integer values.
-	my $file = ".config";
+	my $file = "$config_dir/$defconfig";
 	open DEFCONFIG, ">>$file" or die "Failed to open file, $file";
 	if ($value eq "n") {
 		print DEFCONFIG "\n# $key is not set\n";
@@ -117,15 +117,13 @@ sub perform_task($$$$)
 		print "Removing $key from $defconfig ...\n";
 	}
 
-
-	my $option ="KCONFIG_NOTIMESTAMP=true";
-	system "make ARCH=arm `basename $defconfig` > /dev/null 2>&1";
 	if ($action ne "s") {
 		apply_modification($key, $value, $defconfig);
 	}
-	system "make ARCH=arm savedefconfig $option > /dev/null";
-	move("defconfig", "$config_dir/$defconfig")
-		or die "failed to copy file";
+
+	system "make ARCH=arm `basename $defconfig` > /dev/null 2>&1";
+	system "make ARCH=arm savedefconfig KCONFIG_NOTIMESTAMP=true > /dev/null";
+	move("defconfig", "$config_dir/$defconfig") or die "failed to copy file";
 }
 
 # Parse a task description string

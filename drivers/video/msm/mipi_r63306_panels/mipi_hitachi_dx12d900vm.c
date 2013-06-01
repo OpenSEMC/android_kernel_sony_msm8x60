@@ -104,8 +104,8 @@ static struct msm_panel_info *get_panel_info(void)
 	pinfo.fb_num = 2;
 	pinfo.clk_rate = 390000000;
 
-	pinfo.lcdc.xres_pad = 0;
-	pinfo.lcdc.yres_pad = 0;
+	pinfo.mipi.xres_pad = 0;
+	pinfo.mipi.yres_pad = 0;
 	pinfo.mipi.mode = DSI_VIDEO_MODE;
 	pinfo.mipi.pulse_mode_hsa_he = TRUE;
 	pinfo.mipi.hfp_power_stop = FALSE;
@@ -133,7 +133,6 @@ static struct msm_panel_info *get_panel_info(void)
 	pinfo.mipi.frame_rate  = 60;
 	pinfo.mipi.dsi_phy_db =
 		(struct mipi_dsi_phy_ctrl *)dsi_video_mode_phy_db;
-	pinfo.mipi.esc_byte_ratio = 4;
 
 	return &pinfo;
 }

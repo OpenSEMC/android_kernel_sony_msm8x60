@@ -13,8 +13,8 @@
 #include <linux/hrtimer.h>
 #include <linux/time.h>
 #include <linux/list.h>
-#include <linux/slab.h>
 #include <media/videobuf2-core.h>
+#include <linux/slab.h>
 #include "enc-subdev.h"
 #include "vsg-subdev.h"
 #include "wfd-util.h"

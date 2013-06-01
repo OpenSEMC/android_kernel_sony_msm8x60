@@ -20,6 +20,7 @@
 #include <mach/semc_charger_usb.h>
 #include <linux/gpio.h>
 #include <asm/atomic.h>
+#include <linux/module.h>
 
 #define DETECTION_INTERVAL (HZ / 5) /* 200ms */
 #define DETECTION_POLLING_TIME (HZ) /* 1s */

@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/version.h>
 #include <linux/videodev2.h>
 #include <linux/mutex.h>
@@ -102,7 +103,6 @@ struct iris_device {
 	struct hci_fm_ch_det_threshold ch_det_threshold;
 	struct hci_fm_data_rd_rsp default_data;
 	struct hci_fm_spur_data spur_data;
-	unsigned char is_station_valid;
 };
 
 static struct video_device *priv_videodev;
@@ -1594,8 +1594,8 @@ static void hci_cc_fm_disable_rsp(struct radio_hci_dev *hdev,
 
 	if (status)
 		return;
-
-	iris_q_event(radio, IRIS_EVT_RADIO_DISABLED);
+	if (radio->mode != FM_CALIB)
+		iris_q_event(radio, IRIS_EVT_RADIO_DISABLED);
 
 	radio_hci_req_complete(hdev, status);
 }
@@ -1633,8 +1633,8 @@ static void hci_cc_fm_enable_rsp(struct radio_hci_dev *hdev,
 
 	if (rsp->status)
 		return;
-
-	iris_q_event(radio, IRIS_EVT_RADIO_READY);
+	if (radio->mode != FM_CALIB)
+		iris_q_event(radio, IRIS_EVT_RADIO_READY);
 
 	radio_hci_req_complete(hdev, rsp->status);
 }
@@ -2346,6 +2346,37 @@ static int iris_recv_set_region(struct iris_device *radio, int req_region)
 	int retval;
 	radio->region = req_region;
 
+	switch (radio->region) {
+	case IRIS_REGION_US:
+		radio->recv_conf.band_low_limit =
+			REGION_US_EU_BAND_LOW;
+		radio->recv_conf.band_high_limit =
+			REGION_US_EU_BAND_HIGH;
+		break;
+	case IRIS_REGION_EU:
+		radio->recv_conf.band_low_limit =
+			REGION_US_EU_BAND_LOW;
+		radio->recv_conf.band_high_limit =
+			REGION_US_EU_BAND_HIGH;
+		break;
+	case IRIS_REGION_JAPAN:
+		radio->recv_conf.band_low_limit =
+			REGION_JAPAN_STANDARD_BAND_LOW;
+		radio->recv_conf.band_high_limit =
+			REGION_JAPAN_STANDARD_BAND_HIGH;
+		break;
+	case IRIS_REGION_JAPAN_WIDE:
+		radio->recv_conf.band_low_limit =
+			REGION_JAPAN_WIDE_BAND_LOW;
+		radio->recv_conf.band_high_limit =
+			REGION_JAPAN_WIDE_BAND_HIGH;
+		break;
+	default:
+		/* The user specifies the value.
+		   So nothing needs to be done */
+		break;
+	}
+
 	retval = hci_set_fm_recv_conf(
 			&radio->recv_conf,
 			radio->fm_hdev);
@@ -2358,6 +2389,34 @@ static int iris_trans_set_region(struct iris_device *radio, int req_region)
 {
 	int retval;
 	radio->region = req_region;
+
+	switch (radio->region) {
+	case IRIS_REGION_US:
+		radio->trans_conf.band_low_limit =
+			REGION_US_EU_BAND_LOW;
+		radio->trans_conf.band_high_limit =
+			REGION_US_EU_BAND_HIGH;
+		break;
+	case IRIS_REGION_EU:
+		radio->trans_conf.band_low_limit =
+			REGION_US_EU_BAND_LOW;
+		radio->trans_conf.band_high_limit =
+			REGION_US_EU_BAND_HIGH;
+		break;
+	case IRIS_REGION_JAPAN:
+		radio->trans_conf.band_low_limit =
+			REGION_JAPAN_STANDARD_BAND_LOW;
+		radio->trans_conf.band_high_limit =
+			REGION_JAPAN_STANDARD_BAND_HIGH;
+		break;
+	case IRIS_REGION_JAPAN_WIDE:
+		radio->recv_conf.band_low_limit =
+			REGION_JAPAN_WIDE_BAND_LOW;
+		radio->recv_conf.band_high_limit =
+			REGION_JAPAN_WIDE_BAND_HIGH;
+	default:
+		break;
+	}
 
 	retval = hci_set_fm_trans_conf(
 			&radio->trans_conf,
@@ -2400,22 +2459,26 @@ static int iris_do_calibration(struct iris_device *radio)
 	int retval = 0x00;
 
 	cal_mode = PROCS_CALIB_MODE;
+	radio->mode = FM_CALIB;
 	retval = hci_cmd(HCI_FM_ENABLE_RECV_CMD,
 			radio->fm_hdev);
 	if (retval < 0) {
 		FMDERR("Enable failed before calibration %x", retval);
+		radio->mode = FM_OFF;
 		return retval;
 	}
 	retval = radio_hci_request(radio->fm_hdev, hci_fm_do_cal_req,
 		(unsigned long)cal_mode, RADIO_HCI_TIMEOUT);
 	if (retval < 0) {
 		FMDERR("Do Process calibration failed %x", retval);
+		radio->mode = FM_RECV;
 		return retval;
 	}
 	retval = hci_cmd(HCI_FM_DISABLE_RECV_CMD,
 			radio->fm_hdev);
 	if (retval < 0)
 		FMDERR("Disable Failed after calibration %d", retval);
+	radio->mode = FM_OFF;
 	return retval;
 }
 static int iris_vidioc_g_ctrl(struct file *file, void *priv,
@@ -2582,9 +2645,6 @@ static int iris_vidioc_g_ctrl(struct file *file, void *priv,
 
 		ctrl->value = radio->ch_det_threshold.sinr_samples;
 		break;
-	case V4L2_CID_PRIVATE_VALID_CHANNEL:
-		ctrl->value = radio->is_station_valid;
-		break;
 	default:
 		retval = -EINVAL;
 	}
@@ -2621,7 +2681,7 @@ static int iris_vidioc_g_ext_ctrls(struct file *file, void *priv,
 static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 			struct v4l2_ext_controls *ctrl)
 {
-	int retval = 0, index = 0;
+	int retval = 0;
 	int bytes_to_copy;
 	struct hci_fm_tx_ps tx_ps;
 	struct hci_fm_tx_rt tx_rt;
@@ -2711,10 +2771,6 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 				"actual xfr data\n", __func__);
 			return -EINVAL;
 		}
-		FMDBG("%s: XFR Data to be configured\t:\n", __func__);
-		for (index = 0; index < default_data.length; index++)
-			FMDBG("%s: xfr-data[%d]\t: 0x%x\n", __func__, index,
-				default_data.data[index]);
 		retval = hci_def_data_write(&default_data, radio->fm_hdev);
 		break;
 	case V4L2_CID_PRIVATE_IRIS_SET_CALIBRATION:
@@ -2755,8 +2811,6 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 	struct hci_fm_tx_rt tx_rt = {0};
 	struct hci_fm_def_data_rd_req rd_txgain;
 	struct hci_fm_def_data_wr_req wr_txgain;
-	char sinr_th, sinr;
-	__u8 intf_det_low_th, intf_det_high_th, intf_det_out;
 
 	switch (ctrl->id) {
 	case V4L2_CID_PRIVATE_IRIS_TX_TONE:
@@ -2834,12 +2888,12 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 		case FM_TRANS:
 			retval = hci_cmd(HCI_FM_ENABLE_TRANS_CMD,
 							 radio->fm_hdev);
-			radio->mode = FM_TRANS;
 			if (retval < 0) {
 				FMDERR("Error while enabling TRANS FM"
 							" %d\n", retval);
 				return retval;
 			}
+			radio->mode = FM_TRANS;
 			retval = hci_cmd(HCI_FM_GET_TX_CONFIG, radio->fm_hdev);
 			if (retval < 0)
 				FMDERR("get frequency failed %d\n", retval);
@@ -2850,17 +2904,23 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 			case FM_RECV:
 				retval = hci_cmd(HCI_FM_DISABLE_RECV_CMD,
 						radio->fm_hdev);
-				if (retval < 0)
+				if (retval < 0) {
 					FMDERR("Err on disable recv FM"
 						   " %d\n", retval);
+					return retval;
+				}
+				radio->mode = FM_OFF;
 				break;
 			case FM_TRANS:
 				retval = hci_cmd(HCI_FM_DISABLE_TRANS_CMD,
 						radio->fm_hdev);
 
-				if (retval < 0)
+				if (retval < 0) {
 					FMDERR("Err disabling trans FM"
 						" %d\n", retval);
+					return retval;
+				}
+				radio->mode = FM_OFF;
 				break;
 			default:
 				retval = -EINVAL;
@@ -3221,40 +3281,6 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 	case V4L2_CID_PRIVATE_UPDATE_SPUR_TABLE:
 		update_spur_table(radio);
 		break;
-	case V4L2_CID_PRIVATE_VALID_CHANNEL:
-		retval = hci_cmd(HCI_FM_GET_DET_CH_TH_CMD, radio->fm_hdev);
-		if (retval < 0) {
-			FMDERR("%s: Failed to determine channel's validity\n",
-				__func__);
-			return retval;
-		} else {
-			sinr_th = radio->ch_det_threshold.sinr;
-			intf_det_low_th = radio->ch_det_threshold.low_th;
-			intf_det_high_th = radio->ch_det_threshold.high_th;
-		}
-
-		retval = hci_cmd(HCI_FM_GET_STATION_PARAM_CMD, radio->fm_hdev);
-		if (retval < 0) {
-			FMDERR("%s: Failed to determine channel's validity\n",
-				__func__);
-			return retval;
-		} else
-			sinr = radio->fm_st_rsp.station_rsp.sinr;
-
-		retval = hci_cmd(HCI_FM_STATION_DBG_PARAM_CMD, radio->fm_hdev);
-		if (retval < 0) {
-			FMDERR("%s: Failed to determine channel's validity\n",
-				 __func__);
-			return retval;
-		} else
-			intf_det_out = radio->st_dbg_param.in_det_out;
-
-		if ((sinr >= sinr_th) && (intf_det_out >= intf_det_low_th) &&
-			(intf_det_out <= intf_det_high_th))
-			radio->is_station_valid = VALID_CHANNEL;
-		else
-			radio->is_station_valid = INVALID_CHANNEL;
-		break;
 	default:
 		retval = -EINVAL;
 	}
@@ -3472,20 +3498,12 @@ static int iris_vidioc_dqbuf(struct file *file, void *priv,
 				struct v4l2_buffer *buffer)
 {
 	struct iris_device  *radio = video_get_drvdata(video_devdata(file));
-	enum iris_buf_t buf_type = -1;
-	unsigned char buf_fifo[STD_BUF_SIZE] = {0};
-	struct kfifo *data_fifo = NULL;
-	unsigned char *buf = NULL;
-	unsigned int len = 0, retval = -1;
-
-	if ((radio == NULL) || (buffer == NULL)) {
-		FMDERR("radio/buffer is NULL\n");
-		return -ENXIO;
-	}
-	buf_type = buffer->index;
-	buf = (unsigned char *)buffer->m.userptr;
-	len = buffer->length;
-
+	enum iris_buf_t buf_type = buffer->index;
+	struct kfifo *data_fifo;
+	unsigned char *buf = (unsigned char *)buffer->m.userptr;
+	unsigned int len = buffer->length;
+	if (!access_ok(VERIFY_WRITE, buf, len))
+		return -EFAULT;
 	if ((buf_type < IRIS_BUF_MAX) && (buf_type >= 0)) {
 		data_fifo = &radio->data_buf[buf_type];
 		if (buf_type == IRIS_BUF_EVENTS)
@@ -3496,20 +3514,10 @@ static int iris_vidioc_dqbuf(struct file *file, void *priv,
 		FMDERR("invalid buffer type\n");
 		return -EINVAL;
 	}
-	if (len <= STD_BUF_SIZE) {
-		buffer->bytesused = kfifo_out_locked(data_fifo, &buf_fifo[0],
-					len, &radio->buf_lock[buf_type]);
-	} else {
-		FMDERR("kfifo_out_locked can not use len more than 128\n");
-		return -EINVAL;
-	}
-	retval = copy_to_user(buf, &buf_fifo[0], buffer->bytesused);
-	if (retval > 0) {
-		FMDERR("Failed to copy %d bytes of data\n", retval);
-		return -EAGAIN;
-	}
+	buffer->bytesused = kfifo_out_locked(data_fifo, buf, len,
+					&radio->buf_lock[buf_type]);
 
-	return retval;
+	return 0;
 }
 
 static int iris_vidioc_g_fmt_type_private(struct file *file, void *priv,

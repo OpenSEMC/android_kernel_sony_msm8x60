@@ -1,5 +1,4 @@
 /* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
- * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -88,6 +87,9 @@
  * the luma samples.  JPEG 4:2:2 */
 #define VFE_CHROMA_UPSAMPLE_INTERPOLATED 0
 
+/* wm bit offset for IRQ MASK and IRQ STATUS register */
+#define VFE_WM_OFFSET 6
+
 /* constants for irq registers */
 #define VFE_DISABLE_ALL_IRQS 0
 /* bit =1 is to clear the corresponding bit in VFE_IRQ_STATUS.  */
@@ -115,6 +117,17 @@
 #define VFE_IRQ_STATUS0_ASYNC_TIMER1  0x20000000  /* bit 29 */
 #define VFE_IRQ_STATUS0_ASYNC_TIMER2  0x40000000  /* bit 30 */
 #define VFE_IRQ_STATUS0_ASYNC_TIMER3  0x80000000  /* bit 32 */
+
+#define VFE_IRQ_STATUS1_RDI0_REG_UPDATE_MASK  0x4000000 /*bit 26*/
+#define VFE_IRQ_STATUS1_RDI1_REG_UPDATE_MASK  0x8000000 /*bit 27*/
+
+/*TODOs the irq status passed from axi to vfe irq handler does not account
+* for 2 irq status registers. So below macro is added to differentiate between
+* same bit set on both irq status registers. This wil be fixed later by passing
+*entire payload to vfe irq handler and parsing there instead of passing just the
+*status bit*/
+#define VFE_IRQ_STATUS1_RDI0_REG_UPDATE  0x84000000 /*bit 26*/
+#define VFE_IRQ_STATUS1_RDI1_REG_UPDATE  0x88000000 /*bit 27*/
 
 /* imask for while waiting for stop ack,  driver has already
  * requested stop, waiting for reset irq, and async timer irq.
@@ -224,11 +237,11 @@ enum vfe_output_state {
 #define V32_OUT_CLAMP_OFF         0x00000524
 #define V32_OUT_CLAMP_LEN         8
 
-#define V32_OPERATION_CFG_LEN     36
+#define V32_OPERATION_CFG_LEN     44
 
 #define V32_AXI_OUT_OFF           0x00000038
-#define V32_AXI_OUT_LEN           216
-#define V32_AXI_CH_INF_LEN        24
+#define V32_AXI_OUT_LEN           224
+#define V32_AXI_CH_INF_LEN        32
 #define V32_AXI_CFG_LEN           47
 #define V32_AXI_BUS_FMT_OFF    1
 #define V32_AXI_BUS_FMT_LEN    4
@@ -789,7 +802,8 @@ struct vfe32_output_path {
 
 	struct vfe32_output_ch out0; /* preview and thumbnail */
 	struct vfe32_output_ch out1; /* snapshot */
-	struct vfe32_output_ch out2; /* video    */
+	struct vfe32_output_ch out2; /* rdi0    */
+	struct vfe32_output_ch out3; /* rdi01   */
 };
 
 struct vfe32_frame_extra {
@@ -876,6 +890,9 @@ struct vfe32_frame_extra {
 #define VFE_DMI_DATA_LO                 0x000005A4
 #define VFE_BUS_IO_FORMAT_CFG           0x000006F8
 #define VFE_PIXEL_IF_CFG                0x000006FC
+#define VFE_RDI0_CFG                    0x00000734
+#define VFE_RDI1_CFG                    0x000007A4
+
 #define VFE_VIOLATION_STATUS            0x000007B4
 
 #define VFE33_DMI_DATA_HI               0x000005A0
@@ -891,12 +908,31 @@ struct vfe32_frame_extra {
 #define VFE32_OUTPUT_MODE_PRIMARY_ALL_CHNLS	BIT(7)
 #define VFE32_OUTPUT_MODE_SECONDARY		BIT(8)
 #define VFE32_OUTPUT_MODE_SECONDARY_ALL_CHNLS	BIT(9)
+#define VFE32_OUTPUT_MODE_TERTIARY1		BIT(10)
+#define VFE32_OUTPUT_MODE_TERTIARY2		BIT(11)
 
 struct vfe_stats_control {
 	uint8_t  ackPending;
 	uint32_t nextFrameAddrBuf;
 	uint32_t droppedStatsFrameCount;
 	uint32_t bufToRender;
+};
+
+struct axi_ctrl_t {
+	struct v4l2_subdev subdev;
+	struct platform_device *pdev;
+	struct resource *vfeirq;
+	spinlock_t  tasklet_lock;
+	struct list_head tasklet_q;
+
+	void __iomem *vfebase;
+	void *syncdata;
+
+	struct resource	*vfemem;
+	struct resource *vfeio;
+	struct regulator *fs_vfe;
+	struct clk *vfe_clk[3];
+	struct tasklet_struct vfe32_tasklet;
 };
 
 struct vfe32_ctrl_type {
@@ -907,6 +943,7 @@ struct vfe32_ctrl_type {
 
 	spinlock_t  stop_flag_lock;
 	spinlock_t  update_ack_lock;
+	spinlock_t  start_ack_lock;
 	spinlock_t  state_lock;
 	spinlock_t  io_lock;
 
@@ -920,7 +957,6 @@ struct vfe32_ctrl_type {
 
 	uint32_t extlen;
 	void *extdata;
-	struct mutex vfe_lock;
 
 	int8_t start_ack_pending;
 	int8_t stop_ack_pending;
@@ -933,16 +969,8 @@ struct vfe32_ctrl_type {
 	int8_t update_gamma;
 	enum vfe_output_state liveshot_state;
 
-	spinlock_t  tasklet_lock;
-	struct list_head tasklet_q;
 	void __iomem *vfebase;
-	void *syncdata;
 	uint32_t register_total;
-
-	struct resource	*vfemem;
-	struct resource *vfeio;
-	struct resource *vfeirq;
-	struct regulator *fs_vfe;
 
 	uint32_t stats_comp;
 	atomic_t vstate;
@@ -968,7 +996,6 @@ struct vfe32_ctrl_type {
 	/* v4l2 subdev */
 	struct v4l2_subdev subdev;
 	struct platform_device *pdev;
-	struct clk *vfe_clk[3];
 	spinlock_t  sd_notify_lock;
 	uint32_t hfr_mode;
 	uint32_t frame_skip_cnt;
@@ -993,4 +1020,17 @@ struct vfe_cmd_stats_ack {
 struct vfe_cmd_stats_buf {
 	uint32_t statsBuf[VFE_STATS_BUFFER_COUNT];
 };
+
+#define VIDIOC_MSM_AXI_INIT \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 18, struct msm_cam_media_controller *)
+
+#define VIDIOC_MSM_AXI_RELEASE \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 19, struct msm_cam_media_controller *)
+
+#define VIDIOC_MSM_AXI_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 20, void *)
+
+#define VIDIOC_MSM_AXI_IRQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 21, void *)
+
 #endif /* __MSM_VFE32_H__ */

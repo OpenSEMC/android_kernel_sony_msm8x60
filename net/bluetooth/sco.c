@@ -2,7 +2,6 @@
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (C) 2000-2001 Qualcomm Incorporated
    Copyright (c) 2011, Code Aurora Forum. All rights reserved.
-   Copyright (C) 2012 Sony Mobile Communications AB.
 
    Written 2000,2001 by Maxim Krasnyansky <maxk@qualcomm.com>
 
@@ -26,6 +25,7 @@
 
 /* Bluetooth SCO sockets. */
 
+#include <linux/interrupt.h>
 #include <linux/module.h>
 
 #include <linux/types.h>
@@ -52,7 +52,7 @@
 #include <net/bluetooth/hci_core.h>
 #include <net/bluetooth/sco.h>
 
-static int disable_esco;
+static bool disable_esco;
 
 static const struct proto_ops sco_sock_ops;
 
@@ -237,10 +237,8 @@ static int sco_connect(struct sock *sk, __s8 is_wbs)
 	bacpy(src, conn->src);
 
 	err = sco_chan_add(conn, sk, NULL);
-	if (err) {
-		hci_conn_put(hcon);
+	if (err)
 		goto done;
-	}
 
 	if (hcon->state == BT_CONNECTED) {
 		sco_sock_clear_timer(sk);
@@ -814,9 +812,6 @@ static int sco_sock_shutdown(struct socket *sock, int how)
 		if (sock_flag(sk, SOCK_LINGER) && sk->sk_lingertime)
 			err = bt_sock_wait_state(sk, BT_CLOSED,
 							sk->sk_lingertime);
-		else
-			err = bt_sock_wait_state(sk, BT_CLOSED,
-							SCO_DISCONN_TIMEOUT);
 	}
 	release_sock(sk);
 	return err;
@@ -837,11 +832,6 @@ static int sco_sock_release(struct socket *sock)
 	if (sock_flag(sk, SOCK_LINGER) && sk->sk_lingertime) {
 		lock_sock(sk);
 		err = bt_sock_wait_state(sk, BT_CLOSED, sk->sk_lingertime);
-		release_sock(sk);
-	} else {
-		lock_sock(sk);
-		err = bt_sock_wait_state(sk, BT_CLOSED,
-							SCO_DISCONN_TIMEOUT);
 		release_sock(sk);
 	}
 

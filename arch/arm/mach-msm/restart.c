@@ -1,5 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
- * Copyright (C) 2012 Sony Mobile Communications AB.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,9 +24,9 @@
 #include <linux/mfd/pmic8058.h>
 #include <linux/mfd/pmic8901.h>
 #include <linux/mfd/pm8xxx/misc.h>
-#include <linux/console.h>
 
 #include <asm/mach-types.h>
+#include <asm/system.h>
 
 #include <mach/msm_iomap.h>
 #include <mach/restart.h>
@@ -112,7 +111,7 @@ static void msm_panic_restart(char mode, const char *cmd)
 	flush_cache_all();
 	cpu_proc_fin();
 	flush_cache_all();
-	arch_reset(mode, cmd);
+	msm_restart(mode, cmd);
 	mdelay(1000);
 	printk(KERN_ERR "Reboot failed -- System halted\n");
 	while (1)
@@ -200,7 +199,7 @@ static irqreturn_t resout_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-void arch_reset(char mode, const char *cmd)
+void msm_restart(char mode, const char *cmd)
 {
 
 #ifdef CONFIG_MSM_DLOAD_MODE
@@ -240,15 +239,8 @@ void arch_reset(char mode, const char *cmd)
 		__raw_writel(0x776655AA, restart_reason);
 	}
 
-	if (in_panic) {
+	if (in_panic)
 		writel(0xC0DEDEAD, restart_reason);
-
-		/* if we were in suspend when a panic triggering event occured
-		 * the console may still be suspended, meaning we will loose
-		 * critical kernel logs in last_kmsg. Telling console to panic.
-		 */
-		panic_console();
-	}
 
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
 	if (!(machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())) {
@@ -267,21 +259,9 @@ void arch_reset(char mode, const char *cmd)
 	printk(KERN_ERR "Restarting has failed\n");
 }
 
-static int __init msm_restart_init(void)
+static int __init msm_pmic_restart_init(void)
 {
 	int rc;
-
-	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
-#ifdef CONFIG_MSM_DLOAD_MODE
-	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
-
-	/* Reset detection is switched on below.*/
-	set_dload_mode(1);
-#endif
-	msm_tmr0_base = msm_timer_get_timer0_base();
-
-	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;
-	pm_power_off = msm_power_off;
 
 	if (pmic_reset_irq != 0) {
 		rc = request_any_context_irq(pmic_reset_irq,
@@ -296,4 +276,19 @@ static int __init msm_restart_init(void)
 	return 0;
 }
 
-late_initcall(msm_restart_init);
+late_initcall(msm_pmic_restart_init);
+
+static int __init msm_restart_init(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
+#ifdef CONFIG_MSM_DLOAD_MODE
+	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
+	set_dload_mode(download_mode);
+#endif
+	msm_tmr0_base = msm_timer_get_timer0_base();
+	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;
+	pm_power_off = msm_power_off;
+
+	return 0;
+}
+early_initcall(msm_restart_init);

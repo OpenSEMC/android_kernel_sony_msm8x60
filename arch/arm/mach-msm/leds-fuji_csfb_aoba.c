@@ -8,6 +8,7 @@
  * of the License, or (at your option) any later version.
  */
 
+#include <linux/bug.h>
 #include <linux/leds-as3676_semc.h>
 #include <linux/leds.h>
 

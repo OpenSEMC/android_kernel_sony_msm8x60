@@ -77,7 +77,6 @@
 #include <linux/crc32.h> /* For counting font checksums */
 #include <asm/fb.h>
 #include <asm/irq.h>
-#include <asm/system.h>
 
 #include "fbcon.h"
 
@@ -373,15 +372,8 @@ static void fb_flashcursor(struct work_struct *work)
 	struct vc_data *vc = NULL;
 	int c;
 	int mode;
-	int ret;
 
-	/* FIXME: we should sort out the unbind locking instead */
-	/* instead we just fail to flash the cursor if we can't get
-	 * the lock instead of blocking fbcon deinit */
-	ret = console_trylock();
-	if (ret == 0)
-		return;
-
+	console_lock();
 	if (ops && ops->currcon != -1)
 		vc = vc_cons[ops->currcon].d;
 
@@ -528,33 +520,6 @@ static int search_for_mapped_con(void)
 			retval = 1;
 	}
 	return retval;
-}
-
-static int do_fbcon_takeover(int show_logo)
-{
-	int err, i;
-
-	if (!num_registered_fb)
-		return -ENODEV;
-
-	if (!show_logo)
-		logo_shown = FBCON_LOGO_DONTSHOW;
-
-	for (i = first_fb_vc; i <= last_fb_vc; i++)
-		con2fb_map[i] = info_idx;
-
-	err = do_take_over_console(&fb_con, first_fb_vc, last_fb_vc,
-				fbcon_is_default);
-
-	if (err) {
-		for (i = first_fb_vc; i <= last_fb_vc; i++)
-			con2fb_map[i] = -1;
-		info_idx = -1;
-	} else {
-		fbcon_has_console_bind = 1;
-	}
-
-	return err;
 }
 
 static int fbcon_takeover(int show_logo)
@@ -1018,7 +983,7 @@ static const char *fbcon_startup(void)
 	}
 
 	/* Setup default font */
-	if (!p->fontdata && !vc->vc_font.data) {
+	if (!p->fontdata) {
 		if (!fontname[0] || !(font = find_font(fontname)))
 			font = get_default_font(info->var.xres,
 						info->var.yres,
@@ -1028,8 +993,6 @@ static const char *fbcon_startup(void)
 		vc->vc_font.height = font->height;
 		vc->vc_font.data = (void *)(p->fontdata = font->data);
 		vc->vc_font.charcount = 256; /* FIXME  Need to support more fonts */
-	} else {
-		p->fontdata = vc->vc_font.data;
 	}
 
 	cols = FBCON_SWAP(ops->rotate, info->var.xres, info->var.yres);
@@ -1189,9 +1152,9 @@ static void fbcon_init(struct vc_data *vc, int init)
 	ops->p = &fb_display[fg_console];
 }
 
-static void fbcon_free_font(struct display *p, bool freefont)
+static void fbcon_free_font(struct display *p)
 {
-	if (freefont && p->userfont && p->fontdata && (--REFCOUNT(p->fontdata) == 0))
+	if (p->userfont && p->fontdata && (--REFCOUNT(p->fontdata) == 0))
 		kfree(p->fontdata - FONT_EXTRA_WORDS * sizeof(int));
 	p->fontdata = NULL;
 	p->userfont = 0;
@@ -1203,8 +1166,8 @@ static void fbcon_deinit(struct vc_data *vc)
 	struct fb_info *info;
 	struct fbcon_ops *ops;
 	int idx;
-	bool free_font = true;
 
+	fbcon_free_font(p);
 	idx = con2fb_map[vc->vc_num];
 
 	if (idx == -1)
@@ -1215,8 +1178,6 @@ static void fbcon_deinit(struct vc_data *vc)
 	if (!info)
 		goto finished;
 
-	if (info->flags & FBINFO_MISC_FIRMWARE)
-		free_font = false;
 	ops = info->fbcon_par;
 
 	if (!ops)
@@ -1227,8 +1188,6 @@ static void fbcon_deinit(struct vc_data *vc)
 
 	ops->flags &= ~FBCON_FLAGS_INIT;
 finished:
-
-	fbcon_free_font(p, free_font);
 
 	if (!con_is_bound(&fb_con))
 		fbcon_exit();
@@ -3011,7 +2970,7 @@ static int fbcon_unbind(void)
 {
 	int ret;
 
-	ret = do_unbind_con_driver(&fb_con, first_fb_vc, last_fb_vc,
+	ret = unbind_con_driver(&fb_con, first_fb_vc, last_fb_vc,
 				fbcon_is_default);
 
 	if (!ret)
@@ -3084,7 +3043,7 @@ static int fbcon_fb_unregistered(struct fb_info *info)
 		primary_device = -1;
 
 	if (!num_registered_fb)
-		do_unregister_con_driver(&fb_con);
+		unregister_con_driver(&fb_con);
 
 	return 0;
 }
@@ -3149,7 +3108,7 @@ static int fbcon_fb_registered(struct fb_info *info)
 		}
 
 		if (info_idx != -1)
-			ret = do_fbcon_takeover(1);
+			ret = fbcon_takeover(1);
 	} else {
 		for (i = first_fb_vc; i <= last_fb_vc; i++) {
 			if (con2fb_map_boot[i] == idx)

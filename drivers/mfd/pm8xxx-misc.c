@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,6 +14,7 @@
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
@@ -132,9 +133,18 @@
 #define UART_PATH_SEL_MASK			0x60
 #define UART_PATH_SEL_SHIFT			0x5
 
+#define USB_ID_PU_EN_MASK			0x10	/* PM8921 family only */
+#define USB_ID_PU_EN_SHIFT			4
+
 /* Shutdown/restart delays to allow for LDO 7/dVdd regulator load settling. */
 #define PM8901_DELAY_AFTER_REG_DISABLE_MS	4
 #define PM8901_DELAY_BEFORE_SHUTDOWN_MS		8
+
+#define REG_PM8XXX_XO_CNTRL_2	0x114
+#define MP3_1_MASK	0xE0
+#define MP3_2_MASK	0x1C
+#define MP3_1_SHIFT	5
+#define MP3_2_SHIFT	2
 
 #define REG_HSED_BIAS0_CNTL2		0xA1
 #define REG_HSED_BIAS1_CNTL2		0x135
@@ -498,6 +508,8 @@ int pm8xxx_reset_pwr_off(int reset)
 		case PM8XXX_VERSION_8901:
 			rc = __pm8901_reset_pwr_off(chip, reset);
 			break;
+		case PM8XXX_VERSION_8038:
+		case PM8XXX_VERSION_8917:
 		case PM8XXX_VERSION_8921:
 			rc = __pm8921_reset_pwr_off(chip, reset);
 			break;
@@ -949,6 +961,48 @@ int pm8xxx_uart_gpio_mux_ctrl(enum pm8xxx_uart_path_sel uart_path_sel)
 }
 EXPORT_SYMBOL(pm8xxx_uart_gpio_mux_ctrl);
 
+/**
+ * pm8xxx_usb_id_pullup - Control a pullup for USB ID
+ *
+ * @enable: enable (1) or disable (0) the pullup
+ *
+ * RETURNS: an appropriate -ERRNO error value on error, or zero for success.
+ */
+int pm8xxx_usb_id_pullup(int enable)
+{
+	struct pm8xxx_misc_chip *chip;
+	unsigned long flags;
+	int rc = -ENXIO;
+
+	spin_lock_irqsave(&pm8xxx_misc_chips_lock, flags);
+
+	/* Loop over all attached PMICs and call specific functions for them. */
+	list_for_each_entry(chip, &pm8xxx_misc_chips, link) {
+		switch (chip->version) {
+		case PM8XXX_VERSION_8921:
+		case PM8XXX_VERSION_8922:
+		case PM8XXX_VERSION_8917:
+		case PM8XXX_VERSION_8038:
+			rc = pm8xxx_misc_masked_write(chip,
+				REG_PM8XXX_GPIO_MUX_CTRL, USB_ID_PU_EN_MASK,
+				enable << USB_ID_PU_EN_SHIFT);
+
+			if (rc)
+				pr_err("Fail: reg=%x, rc=%d\n",
+				       REG_PM8XXX_GPIO_MUX_CTRL, rc);
+			break;
+		default:
+			/* Functionality not supported */
+			break;
+		}
+	}
+
+	spin_unlock_irqrestore(&pm8xxx_misc_chips_lock, flags);
+
+	return rc;
+}
+EXPORT_SYMBOL(pm8xxx_usb_id_pullup);
+
 static int __pm8901_preload_dVdd(struct pm8xxx_misc_chip *chip)
 {
 	int rc;
@@ -1009,6 +1063,48 @@ int pm8xxx_preload_dVdd(void)
 	return rc;
 }
 EXPORT_SYMBOL_GPL(pm8xxx_preload_dVdd);
+
+int pm8xxx_aux_clk_control(enum pm8xxx_aux_clk_id clk_id,
+				enum pm8xxx_aux_clk_div divider, bool enable)
+{
+	struct pm8xxx_misc_chip *chip;
+	unsigned long flags;
+	u8 clk_mask = 0, value = 0;
+
+	if (clk_id == CLK_MP3_1) {
+		clk_mask = MP3_1_MASK;
+		value = divider << MP3_1_SHIFT;
+	} else if (clk_id == CLK_MP3_2) {
+		clk_mask = MP3_2_MASK;
+		value = divider << MP3_2_SHIFT;
+	} else {
+		pr_err("Invalid clock id of %d\n", clk_id);
+		return -EINVAL;
+	}
+	if (!enable)
+		value = 0;
+
+	spin_lock_irqsave(&pm8xxx_misc_chips_lock, flags);
+
+	/* Loop over all attached PMICs and call specific functions for them. */
+	list_for_each_entry(chip, &pm8xxx_misc_chips, link) {
+		switch (chip->version) {
+		case PM8XXX_VERSION_8038:
+		case PM8XXX_VERSION_8921:
+			pm8xxx_misc_masked_write(chip,
+					REG_PM8XXX_XO_CNTRL_2, clk_mask, value);
+			break;
+		default:
+			/* Functionality not supported */
+			break;
+		}
+	}
+
+	spin_unlock_irqrestore(&pm8xxx_misc_chips_lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pm8xxx_aux_clk_control);
 
 int pm8xxx_hsed_bias_control(enum pm8xxx_hsed_bias bias, bool enable)
 {

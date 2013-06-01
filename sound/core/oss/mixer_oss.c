@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <linux/string.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/minors.h>
 #include <sound/control.h>
@@ -51,19 +52,14 @@ static int snd_mixer_oss_open(struct inode *inode, struct file *file)
 					 SNDRV_OSS_DEVICE_TYPE_MIXER);
 	if (card == NULL)
 		return -ENODEV;
-	if (card->mixer_oss == NULL) {
-		snd_card_unref(card);
+	if (card->mixer_oss == NULL)
 		return -ENODEV;
-	}
 	err = snd_card_file_add(card, file);
-	if (err < 0) {
-		snd_card_unref(card);
+	if (err < 0)
 		return err;
-	}
 	fmixer = kzalloc(sizeof(*fmixer), GFP_KERNEL);
 	if (fmixer == NULL) {
 		snd_card_file_remove(card, file);
-		snd_card_unref(card);
 		return -ENOMEM;
 	}
 	fmixer->card = card;
@@ -72,10 +68,8 @@ static int snd_mixer_oss_open(struct inode *inode, struct file *file)
 	if (!try_module_get(card->module)) {
 		kfree(fmixer);
 		snd_card_file_remove(card, file);
-		snd_card_unref(card);
 		return -EFAULT;
 	}
-	snd_card_unref(card);
 	return 0;
 }
 
@@ -506,7 +500,7 @@ static struct snd_kcontrol *snd_mixer_oss_test_id(struct snd_mixer_oss *mixer, c
 	
 	memset(&id, 0, sizeof(id));
 	id.iface = SNDRV_CTL_ELEM_IFACE_MIXER;
-	strcpy(id.name, name);
+	strlcpy(id.name, name, sizeof(id.name));
 	id.index = index;
 	return snd_ctl_find_id(card, &id);
 }
