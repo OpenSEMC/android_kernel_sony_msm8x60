@@ -387,9 +387,9 @@ static int kgsl_page_alloc_map_kernel(struct kgsl_memdesc *memdesc)
 			sglen--;
 
 		/* create a list of pages to call vmap */
-		pages = vmalloc(sglen * sizeof(struct page *));
+		pages = kmalloc(sglen * sizeof(struct page *), GFP_KERNEL);
 		if (!pages) {
-			KGSL_CORE_ERR("vmalloc(%d) failed\n",
+			KGSL_CORE_ERR("kmalloc(%d) failed\n",
 				sglen * sizeof(struct page *));
 			return -ENOMEM;
 		}
@@ -399,7 +399,7 @@ static int kgsl_page_alloc_map_kernel(struct kgsl_memdesc *memdesc)
 					VM_IOREMAP, page_prot);
 		KGSL_STATS_ADD(memdesc->size, kgsl_driver.stats.vmalloc,
 				kgsl_driver.stats.vmalloc_max);
-		vfree(pages);
+		kfree(pages);
 	}
 	if (!memdesc->hostptr)
 		return -ENOMEM;
@@ -438,6 +438,20 @@ static void kgsl_ebimem_free(struct kgsl_memdesc *memdesc)
 	free_contiguous_memory_by_paddr(memdesc->physaddr);
 }
 
+static int kgsl_ebimem_map_kernel(struct kgsl_memdesc *memdesc)
+{
+	if (!memdesc->hostptr) {
+		memdesc->hostptr = ioremap(memdesc->physaddr, memdesc->size);
+		if (!memdesc->hostptr) {
+			KGSL_CORE_ERR("ioremap failed, addr:0x%p, size:0x%x\n",
+				memdesc->hostptr, memdesc->size);
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
+}
+
 static void kgsl_coherent_free(struct kgsl_memdesc *memdesc)
 {
 	kgsl_driver.stats.coherent -= memdesc->size;
@@ -458,6 +472,7 @@ static struct kgsl_memdesc_ops kgsl_ebimem_ops = {
 	.free = kgsl_ebimem_free,
 	.vmflags = kgsl_contiguous_vmflags,
 	.vmfault = kgsl_contiguous_vmfault,
+	.map_kernel_mem = kgsl_ebimem_map_kernel,
 };
 
 static struct kgsl_memdesc_ops kgsl_coherent_ops = {
@@ -546,7 +561,8 @@ _kgsl_sharedmem_page_alloc(struct kgsl_memdesc *memdesc,
 		 * range ourselves (see below)
 		 */
 
-		pages[i] = alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
+		pages[i] = alloc_page(GFP_KERNEL | __GFP_HIGHMEM |
+			__GFP_NOWARN | __GFP_NORETRY);
 		if (pages[i] == NULL) {
 			ret = -ENOMEM;
 			memdesc->sglen = i;
