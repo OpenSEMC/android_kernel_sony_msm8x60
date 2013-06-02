@@ -121,10 +121,8 @@ static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr,
 				(unsigned long *)&iova,
 				(unsigned long *)&buffer_size,
 				UNCACHED, 0);
-			if (ret || !iova) {
-				pr_err(
-				"%s() ION iommu map failed, ret = %d, iova = 0x%lx",
-					__func__, ret, iova);
+			if (ret) {
+				pr_err("%s() ION iommu map failed", __func__);
 				goto ion_map_bailout;
 			}
 			map_buffer->phy_addr = iova;
@@ -921,7 +919,7 @@ struct vcd_buffer_entry *vcd_find_buffer_pool_entry
 	u32 i;
 	u32 found = false;
 
-	for (i = 0; i <= pool->count && !found; i++) {
+	for (i = 1; i <= pool->count && !found; i++) {
 		if (pool->entries[i].virtual == addr)
 			found = true;
 
@@ -1255,7 +1253,7 @@ u32 vcd_validate_driver_handle(
 	driver_handle--;
 
 	if (driver_handle < 0 ||
-		driver_handle >= VCD_DRIVER_INSTANCE_MAX ||
+		driver_handle >= VCD_DRIVER_CLIENTS_MAX ||
 		!dev_ctxt->driver_ids[driver_handle]) {
 		return false;
 	} else {
