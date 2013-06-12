@@ -133,7 +133,7 @@ static int tzcom_enable_bus_scaling(void)
 		if (ret) {
 			pr_err("Bandwidth request failed (%d)\n", ret);
 		} else {
-			ret = clk_enable(tzcom_bus_clk);
+			ret = clk_prepare_enable(tzcom_bus_clk);
 			if (ret)
 				pr_err("Clock enable failed\n");
 		}
@@ -165,7 +165,7 @@ static void tzcom_disable_bus_scaling(void)
 	if (tzcom_bw_count > 0)
 		if (tzcom_bw_count-- == 1) {
 			__tzcom_disable_bus_scaling();
-			clk_disable(tzcom_bus_clk);
+			clk_disable_unprepare(tzcom_bus_clk);
 		}
 	mutex_unlock(&tzcom_bw_mutex);
 }
