@@ -558,7 +558,7 @@ static struct platform_driver msm_vidc_driver = {
 	.probe = msm_vidc_probe,
 	.remove = msm_vidc_remove,
 	.driver = {
-		.name = "msm_vidc",
+		.name = "msm_vidc_v4l2",
 		.owner = THIS_MODULE,
 		.of_match_table = msm_vidc_dt_match,
 	},
