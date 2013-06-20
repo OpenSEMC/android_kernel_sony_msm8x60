@@ -310,6 +310,12 @@ static int pcm_out_open(struct inode *inode, struct file *file)
 	pcm->stream_event = AUDDEV_EVT_STREAM_VOL_CHG;
 	pcm->volume = 0x2000;
 
+
+	mutex_init(&pcm->lock);
+	mutex_init(&pcm->write_lock);
+	init_waitqueue_head(&pcm->write_wait);
+	spin_lock_init(&pcm->dsp_lock);
+
 	pcm->ac = q6asm_audio_client_alloc((app_cb)pcm_out_cb, (void *)pcm);
 	if (!pcm->ac) {
 		pr_err("%s: Could not allocate memory\n", __func__);
@@ -325,10 +331,6 @@ static int pcm_out_open(struct inode *inode, struct file *file)
 		goto fail;
 	}
 
-	mutex_init(&pcm->lock);
-	mutex_init(&pcm->write_lock);
-	init_waitqueue_head(&pcm->write_wait);
-	spin_lock_init(&pcm->dsp_lock);
 	atomic_set(&pcm->out_enabled, 0);
 	atomic_set(&pcm->out_stopped, 0);
 	atomic_set(&pcm->out_count, pcm->buffer_count);
