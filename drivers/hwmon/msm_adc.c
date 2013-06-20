@@ -1374,6 +1374,7 @@ static int __devinit msm_adc_init_hwmon(struct platform_device *pdev,
 
 	for (i = 0; i < num_chans; i++) {
 		msm_adc_curr_in_attr.index = i;
+		sysfs_attr_init(&msm_adc_curr_in_attr.dev_attr.attr);
 		msm_adc_curr_in_attr.dev_attr.attr.name = channel[i].name;
 		memcpy(&msm_adc->sens_attr[i], &msm_adc_curr_in_attr,
 						sizeof(msm_adc_curr_in_attr));
