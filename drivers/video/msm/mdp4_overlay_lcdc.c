@@ -339,12 +339,8 @@ void mdp4_lcdc_wait4vsync(int cndx)
 		INIT_COMPLETION(vctrl->vsync_comp);
 	vctrl->wait_vsync_cnt++;
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
-	/* double the timeout in vsync time stamp generation */
-	ret = wait_for_completion_interruptible_timeout(&vctrl->vsync_comp,
-			msecs_to_jiffies(VSYNC_PERIOD * 8));
-	if (ret <= 0)
-		pr_err("%s timeout ret=%d", __func__, ret);
 
+	wait_for_completion(&vctrl->vsync_comp);
 	mdp4_lcdc_vsync_irq_ctrl(cndx, 0);
 	mdp4_stat.wait4vsync0++;
 }
