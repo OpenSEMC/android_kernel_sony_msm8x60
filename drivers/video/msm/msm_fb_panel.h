@@ -1,4 +1,3 @@
-/*
 /* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  * Copyright (C) 2012 Sony Mobile Communications AB.
  *
@@ -177,6 +176,8 @@ struct msm_panel_info {
 	__u32 is_3d_panel;
 	__u32 frame_rate;
 	__u32 frame_interval;
+	__u32 height;
+	__u32 width;
 
 	struct mddi_panel_info mddi;
 	struct lcd_panel_info lcd;
