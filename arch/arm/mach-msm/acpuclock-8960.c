@@ -72,31 +72,7 @@ static struct scalable scalable[] __initdata = {
 	},
 };
 
-static struct scalable *scalable;
-static struct l2_level *l2_freq_tbl;
-static struct acpu_level *acpu_freq_tbl;
-static int l2_freq_tbl_size;
-
-/* Instantaneous bandwidth requests in MB/s. */
-#define BW_MBPS(_bw) \
-	{ \
-		.vectors = (struct msm_bus_vectors[]){ \
-			{\
-				.src = MSM_BUS_MASTER_AMPSS_M0, \
-				.dst = MSM_BUS_SLAVE_EBI_CH0, \
-				.ib = (_bw) * 1000000ULL, \
-				.ab = (_bw) *  100000ULL, \
-			}, \
-			{ \
-				.src = MSM_BUS_MASTER_AMPSS_M1, \
-				.dst = MSM_BUS_SLAVE_EBI_CH0, \
-				.ib = (_bw) * 1000000ULL, \
-				.ab = (_bw) *  100000ULL, \
-			}, \
-		}, \
-		.num_paths = 2, \
-	}
-static struct msm_bus_paths bw_level_tbl[] = {
+static struct msm_bus_paths bw_level_tbl[] __initdata = {
 	[0] =  BW_MBPS(640), /* At least  80 MHz on bus. */
 	[1] = BW_MBPS(1064), /* At least 133 MHz on bus. */
 	[2] = BW_MBPS(1600), /* At least 200 MHz on bus. */

@@ -88,7 +88,7 @@ static struct acpuclk_state drv_state = {
 		.vectors = &(struct msm_bus_vectors){ \
 			.src = MSM_BUS_MASTER_AMPSS_M0, \
 			.dst = MSM_BUS_SLAVE_EBI_CH0, \
-			.ib = (_bw) * 1000000ULL, \
+			.ib = (_bw) * 1000000UL, \
 			.ab = 0, \
 		}, \
 		.num_paths = 1, \
