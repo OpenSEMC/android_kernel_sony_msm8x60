@@ -1331,6 +1331,7 @@ static void vsync_isr_handler(void)
 {
 	vsync_cntrl.vsync_time = ktime_get();
 }
+#endif
 
 ssize_t mdp_dma_show_event(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -2431,19 +2432,23 @@ int mdp_bus_scale_update_request(u64 ab, u64 ib)
 	ib = max(ib, ab);
 	mdp_bus_usecases[bus_index].vectors->ib = min(ib, mdp_max_bw);
 
+/* TODO: re-enable debugging
 	pr_debug("%s: handle=%d index=%d ab=%llu ib=%llu\n", __func__,
 		 (u32)mdp_bus_scale_handle, bus_index,
 		 mdp_bus_usecases[bus_index].vectors->ab,
 		 mdp_bus_usecases[bus_index].vectors->ib);
+*/
 
 	return msm_bus_scale_client_update_request
 		(mdp_bus_scale_handle, bus_index);
 }
 static int mdp_bus_scale_restore_request(void)
 {
+/* TODO: re-enable debugging
 	pr_debug("%s: index=%d ab=%llu ib=%llu\n", __func__, bus_index,
 		mdp_bus_usecases[bus_index].vectors->ab,
 		mdp_bus_usecases[bus_index].vectors->ib);
+*/
 	return mdp_bus_scale_update_request
 		(mdp_bus_usecases[bus_index].vectors->ab,
 		 mdp_bus_usecases[bus_index].vectors->ib);
@@ -2541,8 +2546,6 @@ static int mdp_irq_clk_setup(struct platform_device *pdev,
 			msleep(20);
 			regulator_enable(footswitch);
 		}
-		if (hdmi_pll_fs)
-			regulator_disable(hdmi_pll_fs);
 	}
 
 	mdp_clk = clk_get(&pdev->dev, "core_clk");
