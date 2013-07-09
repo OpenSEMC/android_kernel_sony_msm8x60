@@ -57,6 +57,7 @@ struct hdmi_msm_state_type {
 #ifdef CONFIG_SUSPEND
 	boolean pm_suspended;
 #endif
+	boolean hpd_cable_chg_detected;
 	boolean full_auth_done;
 	boolean hpd_during_auth;
 	struct work_struct hpd_state_work;

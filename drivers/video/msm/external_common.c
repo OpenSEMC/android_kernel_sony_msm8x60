@@ -217,10 +217,6 @@ static ssize_t hdmi_common_rda_edid_modes(struct device *dev,
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d",
 			external_common_state->video_resolution+1);
 
-#if defined(CONFIG_VIDEO_MHL_V1) || defined(CONFIG_VIDEO_MHL_V2)
-	DEV_DBG("%s: '%s' : %s\n", __func__, buf,
-			msm_hdmi_mode_2string(get_best_display_Mode()));
-#else
 	DEV_DBG("%s: '%s'\n", __func__, buf);
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
 	return ret;
