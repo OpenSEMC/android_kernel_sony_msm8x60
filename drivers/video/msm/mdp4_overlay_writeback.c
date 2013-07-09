@@ -267,12 +267,9 @@ static int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
 
 	mdp4_calc_blt_mdp_bw(mfd, pipe);
 
-	if (mfd->map_buffer) {
-		pipe->srcp0_addr = (unsigned int)mfd->map_buffer->iova[0] + \
-			buf_offset;
-		pr_debug("start 0x%lx srcp0_addr 0x%x\n", mfd->
-			map_buffer->iova[0], pipe->srcp0_addr);
-	} else {
+	if (mfd->display_iova)
+		pipe->srcp0_addr = mfd->display_iova + buf_offset;
+	else
 		pipe->srcp0_addr = (uint32)(buf + buf_offset);
 
 	mdp4_mixer_stage_up(pipe, 0);
