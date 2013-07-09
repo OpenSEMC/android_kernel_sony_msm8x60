@@ -1975,8 +1975,11 @@ static int msm_rotator_start(unsigned long arg,
 
 	if (rc == 0 && copy_to_user((void __user *)arg, &info, sizeof(info)))
 		rc = -EFAULT;
+
+/* TODO: implement map_sec_resource
 	if ((rc == 0) && (info.secure))
 		map_sec_resource(msm_rotator_dev);
+*/
 
 	sync_info = &msm_rotator_dev->sync_info[s];
 	if ((rc == 0) && (sync_info->initialized == false)) {
