@@ -3754,6 +3754,9 @@ int msm_vfe_subdev_init(struct v4l2_subdev *sd,
 		}
 	}
 
+	if(mctl->sdata)
+		vfe_clk_info[0].clk_rate = mctl->sdata->pdata->ioclk.vfe_clk_rate;
+
 	rc = msm_cam_clk_enable(&vfe31_ctrl->pdev->dev, vfe_clk_info,
 		vfe31_ctrl->vfe_clk, ARRAY_SIZE(vfe_clk_info), 1);
 	if (rc < 0)

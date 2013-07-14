@@ -9,6 +9,7 @@ config ARCH_MSM7X01A
 	select CPU_V6
 	select GPIO_MSM_V1
 	select MSM_REMOTE_SPINLOCK_SWP
+	select MSM_PM if PM
 
 config ARCH_MSM7X25
 	bool "MSM7x25"
@@ -18,6 +19,7 @@ config ARCH_MSM7X25
 	select GPIO_MSM_V1
 	select MSM_REMOTE_SPINLOCK_SWP
 	select MULTI_IRQ_HANDLER
+	select MSM_PM if PM
 
 config ARCH_MSM7X27
 	bool "MSM7x27"
@@ -141,6 +143,7 @@ config ARCH_MSM8X60
 	select MSM_PM8X60 if PM
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
+	select HAVE_NMI_WATCHDOG if MSM_WATCHDOG || MSM_WATCHDOG_V2
 
 config ARCH_MSM8960
 	bool "MSM8960"
@@ -730,6 +733,34 @@ config MACH_MSM8X60_DRAGON
 	help
 	  Support for the Qualcomm MSM8x60 Dragon board.
 
+config MACH_SEMC_NOZOMI
+	depends on ARCH_MSM8X60
+	default n
+	bool "SEMC Nozomi"
+	help
+	  Support for the Sony Ericsson Nozomi.
+
+config MACH_SEMC_NOZOMI2
+	depends on ARCH_MSM8X60
+	default n
+	bool "SEMC Nozomi2"
+	help
+	  Support for the Sony Ericsson Nozomi2.
+
+config MACH_SEMC_HIKARI_ROW
+        depends on ARCH_MSM8X60
+        default n
+        bool "SEMC Hikari_row"
+        help
+          Support for the Sony Ericsson Hikari_row.
+
+config MACH_SEMC_AOBA
+	depends on ARCH_MSM8X60
+	default n
+	bool "SEMC Aoba"
+	help
+	  Support for the Sony Ericsson Aoba.
+
 config MACH_MSM8960_SIM
 	depends on ARCH_MSM8960
 	bool "MSM8960 Simulator"
@@ -1030,6 +1061,20 @@ choice
 endchoice
 
 choice
+	prompt "GSBI debug console"
+	default MSM_DEBUG_CONSOLE_GSBI5
+	help
+	  This option sets which gsbi port that should be used as debug console.
+
+config MSM_DEBUG_CONSOLE_GSBI5
+        bool "GSBI5"
+
+config MSM_DEBUG_CONSOLE_GSBI8
+        bool "GSBI8"
+
+endchoice
+
+choice
 	prompt "Default Timer"
 	default MSM7X00A_USE_GP_TIMER
 
@@ -1279,7 +1324,7 @@ config MSM_SMD_DEBUG
 	  between the ARM9 and ARM11
 
 config MSM_SDIO_AL
-	depends on ((ARCH_MSM7X30 || MACH_MSM8X60_FUSN_FFA || MACH_TYPE_MSM8X60_FUSION) && HAS_WAKELOCK)
+	depends on ((ARCH_MSM7X30 || MACH_MSM8X60_FUSN_FFA || MACH_TYPE_MSM8X60_FUSION || MACH_SEMC_AOBA) && HAS_WAKELOCK)
 	default y
 	tristate "SDIO-Abstraction-Layer"
 	help
@@ -2081,6 +2126,22 @@ config MSM_NOPM
 	default y if !PM
 	bool
 
+config MSM_PM
+	depends on PM
+	bool
+
+config MSM_PM2
+	depends on PM
+	bool
+
+config MSM_PM8X60
+	depends on PM
+	bool
+
+config MSM_NOPM
+	default y if !PM
+	bool
+
 config MSM_BUS_SCALING
 	bool "Bus scaling driver"
 	default n
@@ -2134,6 +2195,14 @@ config MSM_ETM
 	help
 	  Enables embedded trace collection on MSM8660
 
+config CLOCK_MAP
+	bool "Log clk_enable()/clk_disable() calls"
+	help
+	  Turn on extra debugging for clk_enable()/clk_disable() calls.
+	  A bitmap is maintained in non-cached memory and each registered
+	  clock gets a unique id. If the bitmap has that bit set the clock
+	  is enabled, otherwise the clock is disabled.
+
 config MSM_SLEEP_STATS
 	bool "Enable exporting of MSM sleep stats to userspace"
 	depends on CPU_IDLE
@@ -2154,11 +2223,41 @@ config MSM_STANDALONE_POWER_COLLAPSE
        bool "Enable standalone power collapse"
        default n
 
+config MSM_GSBI5_UART
+	bool "Enable GSBI5 UART device"
+	default n
+	help
+	  This enables GSBI5 configured into UART.
+
+config MSM_GSBI7_UART
+	bool "Enable GSBI7 UART device"
+	default n
+	help
+	  This enables GSBI7 configured into UART.
+
+config MSM_GSBI5_I2C
+	bool "Enable GSBI5 I2C device"
+	default n
+	help
+	  This enables GSBI5 configured into I2C.
+
 config MSM_GSBI9_UART
 	bool "Enable GSBI9 UART device"
 	default n
 	help
 	  This enables GSBI9 configured into UART.
+
+config MSM_GSBI10_UART
+	bool "Enable GSBI10 UART device"
+	default n
+	help
+	  This enables GSBI10 configured into UART.
+
+config MSM_GSBI12_UART
+	bool "Enable GSBI12 UART device"
+	default n
+	help
+	  This enables GSBI12 configured into UART.
 
 config MSM_SHARED_GPIO_FOR_UART2DM
 	bool "Use shared GPIOs into UART mode"
@@ -2294,6 +2393,180 @@ config MSM_MULTIMEDIA_USE_ION
 	  Enable support for multimedia drivers using Ion for buffer management
 	  instead of pmem. Selecting this may also involve userspace
 	  dependencies as well.
+
+config MSM_RTB
+	bool "Register tracing"
+	help
+	  Add support for logging different events to a small uncached
+	  region. This is designed to aid in debugging reset cases where the
+	  caches may not be flushed before the target resets.
+
+config MSM_RTB_SEPARATE_CPUS
+	bool "Separate entries for each cpu"
+	depends on MSM_RTB
+	help
+	  Under some circumstances, it may be beneficial to give dedicated space
+	  for each cpu to log accesses. Selecting this option will log each cpu
+	  separately. This will guarantee that the last acesses for each cpu
+	  will be logged but there will be fewer entries per cpu
+
+config PM8921_MIC_BIAS
+        bool "pm8921 mic bias driver"
+        default n
+        help
+          Provides support for activate pm8921 mic bias driver used for
+          primary and secondary mic.
+
+choice
+    prompt "SWIQI"
+    optional
+    default n
+    config SEMC_SWIQI
+        bool "Enable SWIQI"
+        default n
+        help
+          This enables SWIQI.
+
+    config SONY_SWIQI2
+        bool "Enable SWIQI2"
+        default n
+        help
+          This enables SWIQI2.
+endchoice
+
+config SIMPLE_REMOTE_PLATFORM
+        bool "Simple Remote platform specific driver"
+        default n
+        help
+          Provides support for detecting 3.5mm audio jack, such as wired
+          headset. This is the platform specific layer.
+
+config GPIO_SLIDER
+        bool "GPIO slider"
+        depends on INPUT_GPIO
+        default n
+        help
+          Select if GPIO slider switch is attached.
+
+config SIMPLE_REMOTE_INVERT_PLUG_DETECTION_STATE
+	bool "Invert state of plug detection"
+	depends on SIMPLE_REMOTE_PLATFORM
+	help
+	  This option enables to invert headphone plug detection state,
+	  currently the plug detection state was low state when headphone
+	  was inserted, but it is high state on some products, so that
+	  we need invert this state on these products.
+
+config MMC_MSM_POWER_SUPPLY_SDC3_VIA_MPP04
+	bool "PMIC MPP04"
+	default n
+	help
+	  The power supply for uSD is controlled via MPP04(GPIO)
+
+config SEMC_CHARGER_USB_ARCH
+	bool "Support USB interface for charger"
+	default n
+	help
+	  This enables USB interface for charger.
+
+config SEMC_CHARGER_CRADLE_ARCH
+       bool "Support Cradle for charging"
+       default n
+       help
+	  This enables cradle for charging.
+
+config FUJI_PMIC_KEYPAD
+	bool "Fuji PMIC Keypad"
+	depends on ARCH_MSM8X60
+	default n
+	help
+	  This enables Fuji PMIC Keypad support.
+
+config FUJI_GPIO_KEYPAD
+	bool "Enable Fuji gpio keypad support"
+	depends on ARCH_MSM8X60
+	default n
+	help
+	  This enables the Fuji gpio keypad support.
+
+config PMIC8058_MIC_BIAS
+	bool "pmic8058 mic bias driver"
+	default n
+	help
+	  Provides support for activate pm8058 mic bias driver used for
+	  primary and secondary mic.
+
+config MSM_CACHE_ERP
+	bool "Cache / CPU error reporting"
+	depends on ARCH_MSM_KRAIT
+	help
+	  Say 'Y' here to enable reporting of cache and TLB errors to the kernel
+	  log. Enabling this feature can be used as a system debugging technique
+	  if cache corruption is suspected. Cache error statistics will also be
+	  reported in /proc/cpu/msm_cache_erp.
+
+	  For production builds, you should probably say 'N' here.
+
+config MSM_L1_ERR_PANIC
+	bool "Panic on L1 cache / TLB errors"
+	depends on MSM_CACHE_ERP
+	help
+	  To cause the kernel to panic whenever an L1 cache or TLB error is
+	  detected, say 'Y' here. This may be useful as a debugging technique if
+	  general system instability is suspected.
+
+	  For production builds, you should probably say 'N' here.
+
+
+config MSM_L2_ERP_PORT_PANIC
+	bool "Panic on L2 master port errors"
+	depends on MSM_CACHE_ERP
+	help
+	  Master port errors can occur when a memory request is not properly
+	  handled by the destination slave. Enable this option to catch drivers
+	  which attempt to access bad areas of the address space, or access
+	  hardware registers in an improper state (such as certain clocks not
+	  being on). This option may help with debugging, though production
+	  builds should probably say 'N' here.
+
+config MSM_L2_ERP_1BIT_PANIC
+	bool "Panic on recoverable L2 soft errors"
+	depends on MSM_CACHE_ERP
+	help
+	  Enable this option to cause a kernel panic whenever the L2 cache
+	  encounters a single-bit (correctable) soft error. This option should
+	  only be enabled when doing low-level debugging where cache corruption
+	  is suspected.
+
+	  For production builds, you should definitely say 'N' here.
+
+config MSM_L2_ERP_2BIT_PANIC
+	bool "Panic on unrecoverable L2 soft errors"
+	depends on MSM_CACHE_ERP
+	help
+	  Enable this option to cause a kernel panic whenever the L2 cache
+	  encounters a double-bit (non-correctable) soft error. Debug builds
+	  will likely benefit from having this option enabled to catch cache
+	  problems as soon as possible.
+
+	  For production builds, it may be acceptable to say 'N' here, since
+	  an uncorrectable error might not necessarily cause further problems.
+
+config MSM_CACHE_DUMP
+	bool "Cache dumping support"
+	help
+	  Add infrastructure to dump the L1 and L2 caches to an allocated buffer.
+	  This allows for analysis of the caches in case cache corruption is
+	  suspected.
+
+config MSM_DCVS
+	bool "Use MSM DCVS for CPU/GPU Frequency control"
+	depends on MSM_SCM
+	help
+	  Enable support for MSM DCVS to control all CPU and GPU core frequencies.
+	  The DCVS manager allows idle driver to feed the idle information to the
+	  algorithm and the algorithm returns a frequency for the core which is
+	  passed to the frequency change driver.
 
 config MSM_OCMEM
 	bool "MSM On-Chip memory driver (OCMEM)"
@@ -2470,4 +2743,12 @@ config MSM_8X60_FUSION_GPIO_GLITCH
 	help
 	  Enable masking of glitch during boot up, which helps in avoiding unwanted
 	  noise or s/w code from toggling the ap2mdm err fatal.
+
+config SONY_SSM
+        bool "Support Super Stamina Mode"
+        default n
+        help
+          This enables support for power mode notifications, required by Super
+          Stamina Mode.
+
 endif

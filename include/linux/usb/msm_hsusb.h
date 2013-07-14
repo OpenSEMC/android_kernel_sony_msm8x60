@@ -3,6 +3,8 @@
  * Copyright (C) 2008 Google, Inc.
  * Author: Brian Swetland <swetland@google.com>
  * Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2012 Sony Ericsson Mobile Communications AB.
+ * Copyright (C) 2012 Sony Mobile Communications AB
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -106,6 +108,9 @@ enum msm_usb_phy_type {
  * USB_CHG_STATE_SECONDARY_DONE	Secondary detection is completed (Detects
  *                              between DCP and CDP).
  * USB_CHG_STATE_DETECTED	USB charger type is determined.
+ * USB_CHG_STATE_RECHECK	DCP can be miss-detected as SDP when user
+ *				insert USB cable very slowly. Rechecking chager
+ *				type after a while.
  *
  */
 enum usb_chg_state {
@@ -115,6 +120,7 @@ enum usb_chg_state {
 	USB_CHG_STATE_PRIMARY_DONE,
 	USB_CHG_STATE_SECONDARY_DONE,
 	USB_CHG_STATE_DETECTED,
+	USB_CHG_STATE_RECHECK,
 };
 
 /**
@@ -216,6 +222,7 @@ struct msm_otg_platform_data {
 	bool enable_lpm_on_dev_suspend;
 	bool core_clk_always_on_workaround;
 	struct msm_bus_scale_pdata *bus_scale_table;
+	const char *mhl_dev_name;
 };
 
 /* Timeout (in msec) values (min - max) associated with OTG timers */
@@ -287,6 +294,8 @@ struct msm_otg_platform_data {
  * @id_timer: The timer used for polling ID line to detect ACA states.
  * @xo_handle: TCXO buffer handle
  * @bus_perf_client: Bus performance client handle to request BUS bandwidth
+ * @id_wok: PMIC ID pin checking work.
+ * @wq: Work queue for sm_work, chg_work and id_work.
  */
 struct msm_otg {
 	struct usb_phy phy;
@@ -303,7 +312,9 @@ struct msm_otg {
 #define ID_B		3
 #define ID_C		4
 #define A_BUS_DROP	5
+#define VBUS_DROP_DET	5
 #define A_BUS_REQ	6
+#define MHL		6
 #define A_SRP_DET	7
 #define A_VBUS_VLD	8
 #define B_CONN		9
@@ -326,6 +337,8 @@ struct msm_otg {
 	enum usb_chg_state chg_state;
 	enum usb_chg_type chg_type;
 	u8 dcd_retries;
+	struct work_struct chg_recheck_stop_work;
+	u8 chg_recheck_retries;
 	struct wake_lock wlock;
 	struct notifier_block usbdev_nb;
 	unsigned mA_port;
@@ -361,6 +374,8 @@ struct msm_otg {
 	u8 active_tmout;
 	struct hrtimer timer;
 	enum usb_vdd_type vdd_type;
+	struct delayed_work id_work;
+	struct workqueue_struct *wq;
 };
 
 struct msm_hsic_host_platform_data {
@@ -411,5 +426,7 @@ enum usb_bam {
 int msm_ep_config(struct usb_ep *ep);
 int msm_ep_unconfig(struct usb_ep *ep);
 int msm_data_fifo_config(struct usb_ep *ep, u32 addr, u32 size);
+
+void msm_otg_notify_vbus_drop(void);
 
 #endif

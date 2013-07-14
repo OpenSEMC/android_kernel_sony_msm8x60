@@ -49,6 +49,18 @@ else
 endif
 obj-$(CONFIG_HOTPLUG_CPU) += hotplug.o
 
+ifdef CONFIG_ARCH_MSM8X60
+	obj-$(CONFIG_SIMPLE_REMOTE_PLATFORM) += simple_remote_msm8x60_pf.o
+endif
+ifdef CONFIG_ARCH_MSM8960
+	obj-$(CONFIG_PM8921_MIC_BIAS) += pm8921-mic_bias.o
+	obj-$(CONFIG_SIMPLE_REMOTE_PLATFORM) += simple_remote_msm8960_pf.o
+endif
+
+ifdef CONFIG_ARCH_MSM8X60
+	obj-$(CONFIG_PMIC8058_MIC_BIAS) += pm8058-mic_bias.o
+endif
+
 obj-$(CONFIG_MSM_CPU_AVS) += avs.o
 obj-$(CONFIG_MSM_AVS_HW) += avs_hw.o
 obj-$(CONFIG_CPU_V6) += idle-v6.o
@@ -219,7 +231,14 @@ ifdef CONFIG_CPU_IDLE
 endif
 
 ifdef CONFIG_MSM_CAMERA_V4L2
+ifdef CONFIG_SONY_CAM_MAIN_V4L2
+	obj-$(CONFIG_MACH_SEMC_NOZOMI) += board-fuji-camera.o
+	obj-$(CONFIG_MACH_SEMC_NOZOMI2) += board-fuji-camera.o
+	obj-$(CONFIG_MACH_SEMC_HIKARI_ROW) += board-fuji-camera.o
+	obj-$(CONFIG_MACH_SEMC_AOBA) += board-fuji-camera.o
+else
 	obj-$(CONFIG_ARCH_MSM8X60) += board-msm8x60-camera.o
+endif
 endif
 obj-$(CONFIG_ARCH_FSM9XXX) += devices-fsm9xxx.o
 obj-$(CONFIG_ARCH_FSM9XXX) += clock-fsm9xxx.o clock-local.o acpuclock-fsm9xxx.o
@@ -284,6 +303,18 @@ obj-$(CONFIG_MACH_MSM8930_CDP) += board-8930-all.o board-8930-regulator.o
 obj-$(CONFIG_MACH_MSM8930_MTP) += board-8930-all.o board-8930-regulator.o
 obj-$(CONFIG_MACH_MSM8930_FLUID) += board-8930-all.o board-8930-regulator.o
 obj-$(CONFIG_PM8921_BMS) += bms-batterydata.o bms-batterydata-desay.o
+
+obj-$(CONFIG_MACH_SEMC_NOZOMI) += board-semc_fuji.o gpiomux-fuji_nozomi.o leds-fuji_nozomi.o charger-fuji_nozomi.o keypad-fuji_nozomi.o vreg-fuji_nozomi.o board-semc_fuji-rfkill.o nfc-fuji_nozomi.o gyro-semc_common.o gyro-semc_fuji_nozomi.o
+obj-$(CONFIG_MACH_SEMC_NOZOMI2) += board-semc_fuji.o gpiomux-fuji_nozomi.o leds-fuji_nozomi.o charger-fuji_nozomi.o keypad-fuji_nozomi.o vreg-fuji_nozomi.o board-semc_fuji-rfkill.o nfc-fuji_nozomi.o gyro-semc_common.o gyro-semc_fuji_nozomi.o
+obj-$(CONFIG_MACH_SEMC_HIKARI_ROW) += board-semc_fuji.o gpiomux-fuji_hikari_row.o leds-fuji_hikari.o charger-fuji_hikari.o keypad-fuji_hikari.o vreg-fuji_hikari_row.o board-semc_fuji-rfkill.o nfc-fuji.o gyro-semc_common.o gyro-semc_fuji_hikari.o
+obj-$(CONFIG_MACH_SEMC_AOBA) += board-semc_fuji.o gpiomux-fuji_csfb_aoba.o leds-fuji_csfb_aoba.o charger-fuji_csfb_aoba.o keypad-fuji_csfb_aoba.o vreg-fuji_csfb_aoba.o mdm.o board-semc_fuji-rfkill.o nfc-fuji.o gyro-semc_common.o gyro-semc_fuji_csfb_aoba.o
+
+ifdef CONFIG_TOUCHSCREEN_CLEARPAD
+obj-$(CONFIG_MACH_SEMC_NOZOMI) += touch-fuji_nozomi.o
+obj-$(CONFIG_MACH_SEMC_NOZOMI2) += touch-fuji_nozomi.o
+obj-$(CONFIG_MACH_SEMC_HIKARI_ROW) += touch-fuji_hikari.o
+obj-$(CONFIG_MACH_SEMC_AOBA) += touch-fuji_csfb_aoba.o
+endif
 obj-$(CONFIG_MACH_APQ8064_SIM) += board-8064-all.o board-8064-regulator.o
 obj-$(CONFIG_MACH_APQ8064_RUMI3) += board-8064-all.o board-8064-regulator.o
 obj-$(CONFIG_MACH_APQ8064_CDP) += board-8064-all.o board-8064-regulator.o
@@ -374,10 +405,18 @@ obj-$(CONFIG_ARCH_MSM7X27A) += board-msm7x27a-regulator.o
 endif
 
 obj-$(CONFIG_ARCH_MSM8960) += mdm2.o mdm_common.o
+
+obj-$(CONFIG_SEMC_CHARGER_USB_ARCH) += semc_charger_usb.o
+obj-$(CONFIG_SEMC_CHARGER_CRADLE_ARCH) += semc_charger_cradle.o
+obj-$(CONFIG_BATTERY_SEMC_ARCH) += semc_battery_data.o
+obj-$(CONFIG_FUJI_PMIC_KEYPAD) += keypad-pmic-fuji.o
+
 obj-$(CONFIG_MSM_RTB) += msm_rtb.o
 obj-$(CONFIG_MSM_CACHE_ERP) += cache_erp.o
 obj-$(CONFIG_MSM_EBI_ERP) += ebi_erp.o
 obj-$(CONFIG_MSM_CACHE_DUMP) += msm_cache_dump.o
+
+obj-$(CONFIG_SONY_SSM) += sony_ssm.o
 
 obj-$(CONFIG_MSM_HSIC_SYSMON) += hsic_sysmon.o
 obj-$(CONFIG_MSM_HSIC_SYSMON_TEST) += hsic_sysmon_test.o

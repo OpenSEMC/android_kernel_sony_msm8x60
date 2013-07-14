@@ -295,3 +295,39 @@ config OV7692
 	depends on MSM_CAMERA
 	---help---
 	  Omni Vision VGA YUV Sensor
+
+config SONY_CAM_MAIN_V4L2
+	bool "SONY specific camera (Main camera)"
+	depends on MSM_CAMERA && ARCH_MSM8X60 && MSM_CAMERA_V4L2
+	default n
+	---help---
+	  SONY specific camera module for main camera
+
+config SONY_CAM_SUB_V4L2
+	bool "SONY specific camera (Sub camera)"
+	depends on MSM_CAMERA && ARCH_MSM8X60 && MSM_CAMERA_V4L2
+	default n
+	---help---
+	  SONY specific camera module for sub camera
+
+config SEMC_VPE
+	tristate "Qualcomm MSM Video Pre-processing Engine support"
+	depends on MSM_CAMERA && ARCH_MSM8X60
+	default n
+	---help---
+	  Enable support for Video Pre-processing Engine
+
+config SEMC_VPE1
+	tristate "Qualcomm MSM Video Pre-processing Engine support"
+	depends on MSM_CAMERA && ARCH_MSM8X60
+	default n
+	---help---
+	  Enable support for Video Pre-processing Engine
+config S5K3L1YX
+	bool "Sensor S5K3L1YX (BAYER 12M)"
+	depends on MSM_CAMERA
+	---help---
+		Samsung 12 MP Bayer Sensor with auto focus, uses
+		4 mipi lanes, preview config = 1984 * 1508 at 30 fps,
+		snapshot config = 4000 * 3000 at 20 fps,
+		hfr video at 60, 90 and 120 fps.

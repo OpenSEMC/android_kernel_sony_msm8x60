@@ -1717,9 +1717,9 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 {
 	int rc;
 	struct device *class_dev;
-	char qsee_not_legacy = 0;
+	//char qsee_not_legacy = 0;
 	struct msm_bus_scale_pdata *qseecom_platform_support;
-	uint32_t system_call_id = QSEOS_CHECK_VERSION_CMD;
+	//uint32_t system_call_id = QSEOS_CHECK_VERSION_CMD;
 
 	qsee_bw_count = 0;
 	qseecom_bus_clk = NULL;
@@ -1761,7 +1761,7 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 	spin_lock_init(&qseecom.registered_app_list_lock);
 	init_waitqueue_head(&qseecom.send_resp_wq);
 	qseecom.send_resp_flag = 0;
-
+/*
 	rc = scm_call(6, 1, &system_call_id, sizeof(system_call_id),
 				&qsee_not_legacy, sizeof(qsee_not_legacy));
 	if (rc) {
@@ -1770,10 +1770,11 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 	}
 	if (qsee_not_legacy)
 		qseecom.qseos_version = QSEOS_VERSION_14;
-	else {
+	else*/ {
 		qseecom.qseos_version = QSEOS_VERSION_13;
 		pil = NULL;
 		pil_ref_cnt = 0;
+		pr_err("TZ Probe!\n");
 	}
 	/* Create ION msm client */
 	qseecom.ion_clnt = msm_ion_client_create(0x03, "qseecom-kernel");

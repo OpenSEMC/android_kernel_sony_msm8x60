@@ -11,7 +11,7 @@
 #define RAM_DUMP_DONE		_IOW(CHARM_CODE, 6, int)
 #define WAIT_FOR_RESTART	_IOR(CHARM_CODE, 7, int)
 #define GET_DLOAD_STATUS	_IOR(CHARM_CODE, 8, int)
-
+#define POWROFF_CHARM	_IO(CHARM_CODE, 9)
 enum charm_boot_type {
 	CHARM_NORMAL_BOOT = 0,
 	CHARM_RAM_DUMPS,

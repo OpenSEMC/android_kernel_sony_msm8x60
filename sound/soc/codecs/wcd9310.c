@@ -1,4 +1,6 @@
 /* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2011 Sony Ericsson Mobile Communications AB
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,6 +51,8 @@ MODULE_PARM_DESC(cfilt_adjust_ms, "delay after adjusting cfilt voltage in ms");
 #define BITS_PER_REG 8
 #define TABLA_CFILT_FAST_MODE 0x00
 #define TABLA_CFILT_SLOW_MODE 0x40
+#define TABLA_HP_AMP_ENABLE   0x41
+#define TABLA_HP_AMP_DISABLE  0x48
 #define MBHC_FW_READ_ATTEMPTS 15
 #define MBHC_FW_READ_TIMEOUT 2000000
 
@@ -408,6 +412,8 @@ static unsigned short tx_digital_gain_reg[] = {
 	TABLA_A_CDC_TX9_VOL_CTL_GAIN,
 	TABLA_A_CDC_TX10_VOL_CTL_GAIN,
 };
+
+struct snd_soc_codec *wcd_codec;
 
 static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
@@ -5906,6 +5912,22 @@ static bool tabla_mbhc_fw_validate(const struct firmware *fw)
 	return true;
 }
 
+int tabla_codec_hp_amp_enable(u8 enable)
+{
+	int rc = 0;
+
+	if (!wcd_codec)
+		return -EINVAL;
+
+	rc = snd_soc_write(wcd_codec, TABLA_A_MBHC_HPH,
+		      enable ? TABLA_HP_AMP_ENABLE : TABLA_HP_AMP_DISABLE);
+	if (rc)
+		pr_err("%s: Failed to write MBHC_HPH register\n", __func__);
+
+	return rc;
+}
+EXPORT_SYMBOL_GPL(tabla_codec_hp_amp_enable);
+
 /* called under codec_resource_lock acquisition */
 static int tabla_determine_button(const struct tabla_priv *priv,
 				  const s32 micmv)
@@ -8092,6 +8114,7 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	}
 #endif
 	codec->ignore_pmdown_time = 1;
+	wcd_codec = codec;
 	return ret;
 
 err_hphr_ocp_irq:

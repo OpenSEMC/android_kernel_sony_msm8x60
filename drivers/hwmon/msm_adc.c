@@ -45,6 +45,8 @@
 #define MSM_8x25_ADC_DEV_ID		0
 #define MSM_8x25_CHAN_ID		16
 
+static DEFINE_MUTEX(first_lock);
+
 enum dal_error {
 	DAL_ERROR_INVALID_DEVICE_IDX = 1,
 	DAL_ERROR_INVALID_CHANNEL_IDX,
@@ -85,6 +87,7 @@ struct msm_adc_drv {
 	struct workqueue_struct		*wq;
 	atomic_t			online;
 	atomic_t			total_outst;
+	atomic_t			registered;
 	wait_queue_head_t		total_outst_wait;
 
 	/*  EPM variables  */
@@ -734,14 +737,17 @@ static int msm_adc_blocking_conversion(struct msm_adc_drv *msm_adc,
 	struct msm_adc_channels *channel = &pdata->channel[hwmon_chan];
 	int ret = 0;
 
+	mutex_lock(&first_lock);
 	if (conv_first_request) {
 		ret = pm8058_xoadc_calib_device(channel->adc_dev_instance);
 		if (ret) {
+			mutex_unlock(&first_lock);
 			pr_err("pmic8058 xoadc calibration failed, retry\n");
 			return ret;
 		}
 		conv_first_request = false;
 	}
+	mutex_unlock(&first_lock);
 
 	channel->adc_access_fn->adc_slot_request(channel->adc_dev_instance,
 									&slot);
@@ -755,7 +761,7 @@ static int msm_adc_blocking_conversion(struct msm_adc_drv *msm_adc,
 		slot->chan_adc_calib = channel->adc_calib_type;
 		queue_work(msm_adc_drv->wq, &slot->work);
 
-		wait_for_completion_interruptible(&slot->comp);
+		wait_for_completion(&slot->comp);
 		*result = slot->conv.result;
 		channel->adc_access_fn->adc_restore_slot(
 					channel->adc_dev_instance, slot);
@@ -774,6 +780,9 @@ int32_t adc_channel_open(uint32_t channel, void **h)
 
 	if (!msm_adc_drv)
 		return -EFAULT;
+
+	if (!atomic_read(&msm_adc->registered))
+		return -ENODEV;
 
 #ifdef CONFIG_PMIC8058_XOADC
 	if (pm8058_xoadc_registered() <= 0)
@@ -831,14 +840,17 @@ int32_t adc_channel_request_conv(void *h, struct completion *conv_complete_evt)
 	struct adc_conv_slot *slot;
 	int ret;
 
+	mutex_lock(&first_lock);
 	if (conv_first_request) {
 		ret = pm8058_xoadc_calib_device(channel->adc_dev_instance);
 		if (ret) {
+			mutex_unlock(&first_lock);
 			pr_err("pmic8058 xoadc calibration failed, retry\n");
 			return ret;
 		}
 		conv_first_request = false;
 	}
+	mutex_unlock(&first_lock);
 
 	channel->adc_access_fn->adc_slot_request(channel->adc_dev_instance,
 									&slot);
@@ -1454,6 +1466,7 @@ static int __devinit msm_adc_probe(struct platform_device *pdev)
 	}
 	conv_first_request = true;
 
+	atomic_set(&msm_adc->registered, 1);
 	pr_info("msm_adc successfully registered\n");
 
 	return 0;
@@ -1473,6 +1486,8 @@ static int __devexit msm_adc_remove(struct platform_device *pdev)
 	atomic_set(&msm_adc->online, 0);
 
 	atomic_set(&msm_adc->rpc_online, 0);
+
+	atomic_set(&msm_adc->registered, 0);
 
 	misc_deregister(&msm_adc->misc);
 

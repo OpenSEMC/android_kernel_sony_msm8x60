@@ -871,7 +871,7 @@ endif # V4L_ISA_PARPORT_DRIVERS
 
 menuconfig V4L_PLATFORM_DRIVERS
 	bool "V4L platform devices"
-	default n
+	default y
 	---help---
 	  Say Y here to enable support for platform-specific V4L drivers.
 

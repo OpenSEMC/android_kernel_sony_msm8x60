@@ -28,6 +28,9 @@
 
 #define MAX_SINGLE_LUT_COLS	20
 
+#define MAX_DOUBLE_LUT_ROWS	20
+#define MAX_DOUBLE_LUT_COLS	20
+
 struct single_row_lut {
 	int x[MAX_SINGLE_LUT_COLS];
 	int y[MAX_SINGLE_LUT_COLS];
@@ -72,6 +75,22 @@ struct pc_temp_ocv_lut {
 };
 
 /**
+ * struct double_row_lut -
+ * @rows:	number of rows should be <= MAX_DOUBLE_LUT_ROWS
+ * @cols:	number of columns should be <= MAX_DOUBLE_LUT_COLS
+ * @in_1:	The 1st input parameter for lut and must be in increasing order
+ * @in_2:	The 2nd input parameter for lut and must be in decreasing order
+ * @out:	The output parameter for lut
+ */
+struct double_row_lut {
+	int rows;
+	int cols;
+	int in_1[MAX_DOUBLE_LUT_COLS];
+	int in_2[MAX_DOUBLE_LUT_ROWS][MAX_DOUBLE_LUT_COLS];
+	int out[MAX_DOUBLE_LUT_ROWS];
+};
+
+/**
  * struct pm8921_bms_battery_data -
  * @fcc:		full charge capacity (mAmpHour)
  * @fcc_temp_lut:	table to get fcc at a given temp
@@ -84,6 +103,7 @@ struct pc_temp_ocv_lut {
  *			readings from bms are not available.
  * @delta_rbatt_mohm:	the resistance to be added towards lower soc to
  *			compensate for battery capacitance.
+ * @rbatt_temp_soc_lut:	table to get rbatt given batt temp and soc
  */
 struct pm8921_bms_battery_data {
 	unsigned int		fcc;
@@ -94,6 +114,7 @@ struct pm8921_bms_battery_data {
 	struct sf_lut		*rbatt_sf_lut;
 	int			default_rbatt_mohm;
 	int			delta_rbatt_mohm;
+	struct double_row_lut		*rbatt_temp_soc_lut;
 };
 
 struct pm8xxx_bms_core_data {
@@ -122,6 +143,7 @@ enum battery_type {
  */
 struct pm8921_bms_platform_data {
 	struct pm8xxx_bms_core_data	bms_cdata;
+	struct pm8921_bms_battery_data	*battery_data;
 	enum battery_type		battery_type;
 	unsigned int			r_sense;
 	unsigned int			i_test;
@@ -129,6 +151,7 @@ struct pm8921_bms_platform_data {
 	unsigned int			max_voltage_uv;
 	unsigned int			rconn_mohm;
 	int				enable_fcc_learning;
+	unsigned int			default_rbatt_mohms;
 };
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)
@@ -166,6 +189,12 @@ int pm8921_bms_get_battery_current(int *result);
  *
  */
 int pm8921_bms_get_percent_charge(void);
+
+/**
+ * pm8921_bms_get_init_fcc - returns initial fcc in mAh of the battery
+ *
+ */
+int pm8921_bms_get_init_fcc(void);
 
 /**
  * pm8921_bms_get_fcc - returns fcc in mAh of the battery depending on its age
@@ -217,6 +246,10 @@ static inline int pm8921_bms_get_battery_current(int *result)
 	return -ENXIO;
 }
 static inline int pm8921_bms_get_percent_charge(void)
+{
+	return -ENXIO;
+}
+static inline int pm8921_bms_get_init_fcc(void)
 {
 	return -ENXIO;
 }

@@ -310,7 +310,9 @@ void __branch_enable_reg(const struct branch *b, const char *name)
 		for (count = HALT_CHECK_MAX_LOOPS; branch_clk_is_halted(b)
 					&& count > 0; count--)
 			udelay(1);
+		/*
 		WARN(count == 0, "%s status stuck at 'off'", name);
+		*/
 	}
 }
 
@@ -320,9 +322,11 @@ static void __rcg_clk_enable_reg(struct rcg_clk *rcg)
 	u32 reg_val;
 	void __iomem *const reg = rcg->b.ctl_reg;
 
+	/*
 	WARN(rcg->current_freq == &rcg_dummy_freq,
 		"Attempting to enable %s before setting its rate. "
 		"Set the rate first!\n", rcg->c.dbg_name);
+	*/
 
 	/*
 	 * Program the NS register, if applicable. NS registers are not
@@ -384,7 +388,9 @@ u32 __branch_disable_reg(const struct branch *b, const char *name)
 		for (count = HALT_CHECK_MAX_LOOPS; !branch_clk_is_halted(b)
 					&& count > 0; count--)
 			udelay(1);
+		/*
 		WARN(count == 0, "%s status stuck at 'on'", name);
+		*/
 	}
 
 	return reg_val;

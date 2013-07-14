@@ -1,4 +1,5 @@
 /* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2012 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -78,6 +79,8 @@
 #define MSM_UART6DM_PHYS	(MSM_GSBI6_PHYS + 0x40000)
 #define MSM_UART8DM_PHYS	(MSM_GSBI8_PHYS + 0x40000)
 #define MSM_UART9DM_PHYS	(MSM_GSBI9_PHYS + 0x40000)
+#define MSM_UART10DM_PHYS	(MSM_GSBI10_PHYS + 0x40000)
+#define MSM_UART12DM_PHYS	(MSM_GSBI12_PHYS + 0x10000)
 
 /* GSBI QUP devices */
 #define MSM_GSBI1_QUP_PHYS	(MSM_GSBI1_PHYS + 0x80000)
@@ -205,6 +208,33 @@ struct platform_device msm_device_hsic_host = {
 struct platform_device msm8960_device_acpuclk = {
 	.name		= "acpuclk-8960",
 	.id		= -1,
+};
+
+static struct resource resources_uart_gsbi8[] = {
+	{
+		.start	= GSBI8_UARTDM_IRQ,
+		.end	= GSBI8_UARTDM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART8DM_PHYS,
+		.end	= MSM_UART8DM_PHYS + PAGE_SIZE - 1,
+		.name	= "uartdm_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= MSM_GSBI8_PHYS,
+		.end	= MSM_GSBI8_PHYS + PAGE_SIZE - 1,
+		.name	= "gsbi_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm8960_device_uart_gsbi8 = {
+	.name	= "msm_serial_hsl",
+	.id	= 0,
+	.num_resources	= ARRAY_SIZE(resources_uart_gsbi8),
+	.resource	= resources_uart_gsbi8,
 };
 
 #define SHARED_IMEM_TZ_BASE 0x2a03f720
@@ -339,6 +369,43 @@ struct platform_device msm_device_uart_dm9 = {
 	},
 };
 
+static struct resource msm_uart_dm10_resources[] = {
+	{
+		.start	= MSM_UART10DM_PHYS,
+		.end	= MSM_UART10DM_PHYS + PAGE_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= GSBI10_UARTDM_IRQ,
+		.end	= GSBI10_UARTDM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= DMOV_HSUART_GSBI10_TX_CHAN,
+		.end	= DMOV_HSUART_GSBI10_RX_CHAN,
+		.name	= "uartdm_channels",
+		.flags	= IORESOURCE_DMA,
+	},
+	{
+		.start	= DMOV_HSUART_GSBI10_TX_CRCI,
+		.end	= DMOV_HSUART_GSBI10_RX_CRCI,
+		.name	= "uartdm_crci",
+		.flags	= IORESOURCE_DMA,
+	},
+};
+
+static u64 msm_uart_dm10_dma_mask = DMA_BIT_MASK(32);
+struct platform_device msm_device_uart_dm10 = {
+	.name	= "msm_serial_hs",
+	.id	= 1,
+	.num_resources	= ARRAY_SIZE(msm_uart_dm10_resources),
+	.resource	= msm_uart_dm10_resources,
+	.dev	= {
+		.dma_mask		= &msm_uart_dm10_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
 static struct resource resources_uart_gsbi5[] = {
 	{
 		.start	= GSBI5_UARTDM_IRQ,
@@ -365,6 +432,35 @@ struct platform_device msm8960_device_uart_gsbi5 = {
 	.num_resources	= ARRAY_SIZE(resources_uart_gsbi5),
 	.resource	= resources_uart_gsbi5,
 };
+
+#ifdef CONFIG_MSM_GSBI12_UART
+static struct resource resources_uart_gsbi12[] = {
+	{
+		.start	= GSBI12_UARTDM_IRQ,
+		.end	= GSBI12_UARTDM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART12DM_PHYS,
+		.end	= MSM_UART12DM_PHYS + PAGE_SIZE - 1,
+		.name	= "uartdm_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= MSM_GSBI12_PHYS,
+		.end	= MSM_GSBI12_PHYS + PAGE_SIZE - 1,
+		.name	= "gsbi_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm8960_device_uart_gsbi12 = {
+	.name	= "msm_serial_hsl",
+	.id	= 3,
+	.num_resources	= ARRAY_SIZE(resources_uart_gsbi12),
+	.resource	= resources_uart_gsbi12,
+};
+#endif
 
 static struct msm_serial_hslite_platform_data uart_gsbi8_pdata = {
 	.line		= 0,
@@ -1704,6 +1800,7 @@ struct platform_device msm8960_device_vpe = {
 };
 #endif
 
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
 #define MSM_TSIF0_PHYS       (0x18200000)
 #define MSM_TSIF1_PHYS       (0x18201000)
 #define MSM_TSIF_SIZE        (0x200)
@@ -1808,6 +1905,7 @@ struct platform_device msm_device_tsif[2] = {
 		},
 	}
 };
+#endif
 
 static struct resource resources_ssbi_pmic[] = {
 	{
@@ -1905,6 +2003,11 @@ struct platform_device msm_cpudai0 = {
 struct platform_device msm_cpudai1 = {
 	.name	= "msm-dai-q6",
 	.id	= 0x4001,
+};
+
+struct platform_device msm_cpudai_hdmi_rx = {
+	.name	= "msm-dai-q6-hdmi",
+	.id	= 8,
 };
 
 struct platform_device msm8960_cpudai_slimbus_2_rx = {
@@ -3863,4 +3966,71 @@ struct platform_device mdm_sglte_device = {
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(sglte_resources),
 	.resource	= sglte_resources,
+};
+
+static struct resource msm_cache_erp_resources[] = {
+	{
+		.name = "l1_irq",
+		.start = SC_SICCPUXEXTFAULTIRPTREQ,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.name = "l2_irq",
+		.start = APCC_QGICL2IRPTREQ,
+		.flags = IORESOURCE_IRQ,
+	}
+};
+
+struct platform_device msm8960_device_cache_erp = {
+	.name		= "msm_cache_erp",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(msm_cache_erp_resources),
+	.resource	= msm_cache_erp_resources,
+};
+
+static int msm8960_LPM_latency = 1000; /* >100 usec for WFI */
+
+struct platform_device msm8960_cpu_idle_device = {
+	.name   = "msm_cpu_idle",
+	.id     = -1,
+	.dev = {
+		.platform_data = &msm8960_LPM_latency,
+	},
+};
+
+static struct msm_dcvs_freq_entry msm8960_freq[] = {
+	{ 384000, 166981,  345600},
+	{ 702000, 213049,  632502},
+	{1026000, 285712,  925613},
+	{1242000, 383945, 1176550},
+	{1458000, 419729, 1465478},
+	{1512000, 434116, 1546674},
+
+};
+
+static struct msm_dcvs_core_info msm8960_core_info = {
+	.freq_tbl = &msm8960_freq[0],
+	.core_param = {
+		.max_time_us = 100000,
+		.num_freq = ARRAY_SIZE(msm8960_freq),
+	},
+	.algo_param = {
+		.slack_time_us = 58000,
+		.scale_slack_time = 0,
+		.scale_slack_time_pct = 0,
+		.disable_pc_threshold = 1458000,
+		.em_window_size = 100000,
+		.em_max_util_pct = 97,
+		.ss_window_size = 1000000,
+		.ss_util_pct = 95,
+		.ss_iobusy_conv = 100,
+	},
+};
+
+struct platform_device msm8960_msm_gov_device = {
+	.name = "msm_dcvs_gov",
+	.id = -1,
+	.dev = {
+		.platform_data = &msm8960_core_info,
+	},
 };

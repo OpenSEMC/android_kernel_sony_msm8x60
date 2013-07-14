@@ -96,12 +96,17 @@ module_param(print_all_stacks, int,  S_IRUGO | S_IWUSR);
 /* Area for context dump in secure mode */
 static void *scm_regsave;
 
+/* This variable is used by the ramdump.
+ * It holds the physical address to the dump of the CPU registers.
+ */
+unsigned scm_regsave_pa;
+
 static struct msm_watchdog_pdata __percpu **percpu_pdata;
 
-static void pet_watchdog_work(struct work_struct *work);
+static void pet_watchdog_fn(unsigned long data);
 static void init_watchdog_work(struct work_struct *work);
-static DECLARE_DELAYED_WORK(dogwork_struct, pet_watchdog_work);
 static DECLARE_WORK(init_dogwork_struct, init_watchdog_work);
+static struct timer_list wdog_timer;
 
 /* Called from the FIQ bark handler */
 void msm_wdog_bark_fin(void)
@@ -176,7 +181,7 @@ static void wdog_disable_work(struct work_struct *work)
 	}
 	enable = 0;
 	atomic_notifier_chain_unregister(&panic_notifier_list, &panic_blk);
-	cancel_delayed_work(&dogwork_struct);
+	del_timer(&wdog_timer);
 	/* may be suspended after the first write above */
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
 	complete(&work_data->complete);
@@ -241,13 +246,32 @@ void pet_watchdog(void)
 	last_pet = time_ns;
 }
 
-static void pet_watchdog_work(struct work_struct *work)
+static void pet_watchdog_fn(unsigned long data)
 {
 	pet_watchdog();
 
-	if (enable)
-		schedule_delayed_work_on(0, &dogwork_struct, delay_time);
+	if (enable) {
+		wdog_timer.expires += delay_time;
+		add_timer_on(&wdog_timer, 0);
+	}
 }
+
+static int wdog_init_done;
+
+void touch_nmi_watchdog(void)
+{
+	unsigned long long ns;
+
+	if (!wdog_init_done)
+		return;
+
+	ns = sched_clock() - last_pet;
+	if (nsecs_to_jiffies(ns) > delay_time)
+		pet_watchdog();
+
+	touch_softlockup_watchdog();
+}
+EXPORT_SYMBOL(touch_nmi_watchdog);
 
 static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 {
@@ -306,6 +330,8 @@ static void configure_bark_dump(void)
 				pr_err("Setting register save address failed.\n"
 				       "Registers won't be dumped on a dog "
 				       "bite\n");
+			else
+				scm_regsave_pa = cmd_buf.addr;
 		} else {
 			pr_err("Allocating register save space failed\n"
 			       "Registers won't be dumped on a dog bite\n");
@@ -367,7 +393,10 @@ static void init_watchdog_work(struct work_struct *work)
 	__raw_writel(timeout, msm_tmr0_base + WDT0_BARK_TIME);
 	__raw_writel(timeout + 3*WDT_HZ, msm_tmr0_base + WDT0_BITE_TIME);
 
-	schedule_delayed_work_on(0, &dogwork_struct, delay_time);
+	init_timer(&wdog_timer);
+	wdog_timer.function = pet_watchdog_fn;
+	wdog_timer.expires = jiffies + delay_time;
+	add_timer_on(&wdog_timer, 0);
 
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &panic_blk);
@@ -375,6 +404,7 @@ static void init_watchdog_work(struct work_struct *work)
 	__raw_writel(1, msm_tmr0_base + WDT0_EN);
 	__raw_writel(1, msm_tmr0_base + WDT0_RST);
 	last_pet = sched_clock();
+	wdog_init_done = 1;
 
 	if (!has_vic)
 		enable_percpu_irq(WDT0_ACCSCSSNBARK_INT, IRQ_TYPE_EDGE_RISING);

@@ -113,6 +113,27 @@ config USB_GADGET_STORAGE_NUM_BUFFERS
 	   a module parameter as well.
 	   If unsure, say 2.
 
+config SUPPORT_ALIEN_USB_CHARGER
+	bool "Alien USB charger support"
+	default n
+	help
+	  Enabling this option adds alien USB charger support.
+	  Alien USB charger is an USB charger where the resistance between the
+	  data lines D+/D- is greater than 200 Ohms.
+	  Alien USB charger can look like USB host charger because of the
+	  D+/D- configuration. The difference is that Alien USB charger never
+	  enumerates.
+
+config ALIEN_USB_CHARGER_CURRENT_MA
+	int "Maximum alien USB current"
+	depends on SUPPORT_ALIEN_USB_CHARGER
+	range 0 1500
+	default 500
+	help
+	  Enter the maximum power, in milliAmperes, your device draws through USB
+	  when detected as an alien charger. The permitted range of values is
+	  0 - 1500 mA.
+
 #
 # USB Peripheral Controller Support
 #
@@ -915,6 +936,14 @@ config USB_G_ANDROID
 	  Each function can be configured and enabled/disabled
 	  dynamically from userspace through a sysfs interface.
 
+config USB_ANDROID_GG
+        boolean "GordonsGate driver"
+        depends on USB_G_ANDROID
+        default n
+        help
+         Enabling this option adds GordonsGate support to the
+         android gadget.
+
 config USB_CDC_COMPOSITE
 	tristate "CDC Composite Device (Ethernet and ACM)"
 	depends on NET
@@ -1058,6 +1087,12 @@ config USB_MSC_PROFILING
 	help
 	  If you say Y here, support will be added for collecting
 	  Mass-storage performance numbers at the VFS level.
+
+config USB_KDDI_SCSI_EXTENSIONS
+	boolean "SCSI Command Extenstion for KDDI Device"
+	default n
+	help
+	 The mass storage extension to communicate with KDDI application.
 
 config MODEM_SUPPORT
 	boolean "modem support in generic serial function driver"

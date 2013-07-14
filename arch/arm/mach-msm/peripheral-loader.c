@@ -415,8 +415,11 @@ void pil_put(void *peripheral_handle)
 	if (WARN(!pil->count, "%s: %s: Reference count mismatch\n",
 			pil->desc->name, __func__))
 		goto err_out;
+	if (pil->count == 1)
+		goto unlock;
 	if (!--pil->count)
 		pil_shutdown(pil);
+unlock:
 	mutex_unlock(&pil->lock);
 
 	pil_d = find_peripheral(pil->desc->depends_on);
