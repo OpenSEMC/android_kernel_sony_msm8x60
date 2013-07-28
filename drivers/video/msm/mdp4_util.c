@@ -3053,6 +3053,7 @@ int mdp4_qseed_access_cfg(struct mdp_qseed_cfg *config, uint32_t base)
 		}
 	}
 
+err_mem:
 	kfree(values);
 error:
 	return ret;
