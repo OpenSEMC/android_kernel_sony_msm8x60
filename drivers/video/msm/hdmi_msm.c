@@ -4627,8 +4627,10 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	DEV_INFO("Hdmi state switch to %d: %s\n",
 		external_common_state->sdev.state, __func__);
 
-	if (!hdmi_msm_is_dvi_mode())
+	if (!hdmi_msm_is_dvi_mode()) {
 		hdmi_msm_audio_off();
+		hdcp_deauthenticate();
+	}
 
 	hdmi_msm_powerdown_phy();
 
