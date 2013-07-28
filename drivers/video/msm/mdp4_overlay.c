@@ -2055,6 +2055,14 @@ void mdp4_mixer_blend_setup(int mixer)
 			}
 		}
 
+		/* mixer numer, /dev/fb0, /dev/fb1, /dev/fb2 */
+		if (mixer == MDP4_MIXER2)
+			overlay_base = MDP_BASE + MDP4_OVERLAYPROC2_BASE;/* 0x88000 */
+		else if (mixer == MDP4_MIXER1)
+			overlay_base = MDP_BASE + MDP4_OVERLAYPROC1_BASE;/* 0x18000 */
+		else
+			overlay_base = MDP_BASE + MDP4_OVERLAYPROC0_BASE;/* 0x10000 */
+
 		off = 20 * i;
 		off = 0x20 * (i - MDP4_MIXER_STAGE0);
 		if (i == MDP4_MIXER_STAGE3)
