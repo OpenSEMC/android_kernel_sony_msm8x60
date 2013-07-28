@@ -439,7 +439,6 @@ void fill_black_screen(bool on, uint8 pipe_num, uint8 mixer_num)
 
 	return;
 }
-#endif
 
 void mdp4_overlay_dmae_xy(struct mdp4_overlay_pipe *pipe)
 {
@@ -3455,9 +3454,12 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 			mdp4_wfd_pipe_queue(0, pipe);/* cndx = 0 */
 	}
 
-	/* write out DPP HSIC registers */
+/* NEED HSIC CODE
+	// write out DPP HSIC registers
 	if (pipe->flags & MDP_DPP_HSIC)
 		mdp4_hsic_update(pipe);
+NEED HSIC CODE */
+
 	if (!(pipe->flags & MDP_OV_PLAY_NOWAIT))
 		mdp4_iommu_unmap(pipe);
 	mdp4_stat.overlay_play[pipe->mixer_num]++;
