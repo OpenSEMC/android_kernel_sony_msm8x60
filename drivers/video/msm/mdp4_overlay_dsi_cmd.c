@@ -1108,19 +1108,12 @@ void mdp_dsi_cmd_overlay_suspend(struct msm_fb_data_type *mfd)
 
 static int mdp4_dsi_cmd_clk_check(struct vsycn_ctrl *vctrl)
 {
-	struct msm_fb_panel_data *pdata = mfd->pdev->dev.platform_data;
-	int need_dmap_wait = 0;
 	int clk_set_on = 0;
 	unsigned long flags;
 
 	mutex_lock(&vctrl->update_lock);
-	if (pdata && pdata->power_on_panel_at_pan) {
-		INIT_COMPLETION(vctrl->dmap_comp);
-		need_dmap_wait = 1;
-	}
 	if (atomic_read(&vctrl->suspend)) {
 		mutex_unlock(&vctrl->update_lock);
-		mutex_unlock(&mfd->dma->ov_mutex);
 		pr_err("%s: suspended, no more pan display\n", __func__);
 		return -EPERM;
 	}
@@ -1178,11 +1171,9 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 		mdp4_dsi_cmd_pipe_queue(0, pipe);
 	}
 
+	mutex_lock(&mfd->dma->ov_mutex);
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 	mdp4_dsi_cmd_pipe_commit(cndx, 0);
-	if (need_dmap_wait)
-		mdp4_dsi_cmd_wait4dmap(0);
-
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 
