@@ -3107,7 +3107,8 @@ static void hdmi_msm_hdcp_enable(void)
 	hdmi_msm_state->hdcp_activating = TRUE;
 	mutex_unlock(&hdmi_msm_state_mutex);
 
-	fill_black_screen();
+	/* Check if needed */
+	//fill_black_screen();
 
 	mutex_lock(&hdcp_auth_state_mutex);
 	/*
@@ -3153,7 +3154,8 @@ static void hdmi_msm_hdcp_enable(void)
 	if (ret)
 		goto error;
 
-	unfill_black_screen();
+	/* Check if needed */
+	//unfill_black_screen();
 
 	mutex_lock(&hdmi_msm_state_mutex);
 	hdmi_msm_state->hdcp_activating = FALSE;
@@ -3174,7 +3176,7 @@ static void hdmi_msm_hdcp_enable(void)
 	kobject_uevent_env(external_common_state->uevent_kobj,
 		    KOBJ_CHANGE, envp);
 
-	if (!hdmi_msm_is_dvi_mode())
+	if (!hdmi_msm_is_dvi_mode()) {
 		switch_set_state(&external_common_state->audio_sdev, 1);
 
 		SWITCH_SET_HDMI_AUDIO(1, 0);
