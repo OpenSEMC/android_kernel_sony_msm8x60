@@ -1545,6 +1545,8 @@ static long msm_rotator_ioctl(struct file *file, unsigned cmd,
 		return msm_rotator_do_rotate(arg);
 	case MSM_ROTATOR_IOCTL_FINISH:
 		return msm_rotator_finish(arg);
+	case MSM_ROTATOR_IOCTL_BUFFER_SYNC:
+		return msm_rotator_buf_sync(arg);
 
 	default:
 		dev_dbg(msm_rotator_dev->device,
