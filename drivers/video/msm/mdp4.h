@@ -788,10 +788,15 @@ static inline void mdp4_dsi_cmd_del_timer(void)
 {
 	/* empty */
 }
-#else /* CONFIG_FB_MSM_MIPI_DSI */
+#else /* CONFIG_FB_MSM_MDP303 */
 void mdp4_dsi_cmd_del_timer(void);
+static inline void mdp4_mddi_wait4vsync(int cndx, long long *vtime)
+{
+}
 #endif
 #else  /* CONFIG_FB_MSM_MIPI_DSI */
+
+void mdp4_mddi_wait4vsync(int cndx, long long *vtime);
 
 static inline int mdp4_dsi_cmd_on(struct platform_device *pdev)
 {
