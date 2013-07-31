@@ -15,7 +15,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/export.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
@@ -43,7 +42,6 @@ struct sync_pt *sw_sync_pt_create(struct sw_sync_timeline *obj, u32 value)
 
 	return (struct sync_pt *)pt;
 }
-EXPORT_SYMBOL(sw_sync_pt_create);
 
 static struct sync_pt *sw_sync_pt_dup(struct sync_pt *sync_pt)
 {
@@ -121,7 +119,6 @@ struct sw_sync_timeline *sw_sync_timeline_create(const char *name)
 
 	return obj;
 }
-EXPORT_SYMBOL(sw_sync_timeline_create);
 
 void sw_sync_timeline_inc(struct sw_sync_timeline *obj, u32 inc)
 {
@@ -129,7 +126,7 @@ void sw_sync_timeline_inc(struct sw_sync_timeline *obj, u32 inc)
 
 	sync_timeline_signal(&obj->obj);
 }
-EXPORT_SYMBOL(sw_sync_timeline_inc);
+
 
 #ifdef CONFIG_SW_SYNC_USER
 /* *WARNING*
