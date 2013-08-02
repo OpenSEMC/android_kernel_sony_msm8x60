@@ -69,6 +69,10 @@ struct override_value {
 };
 #endif /* DEBUG_FS */
 
+/* outsourced to global stack */
+int ambient_temp;
+int resistance;
+
 enum {
 	PMIC_THERM = 0,
 	MSM_THERM,
@@ -623,8 +627,6 @@ static enum hrtimer_restart semc_battery_timer_func(struct hrtimer *timer)
 
 static void semc_battery_timer_worker(struct work_struct *work)
 {
-	int resistance = 0;
-	int ambient_temp = 0;
 	enum battery_technology tech;
 	int tech_old = 0;
 	int temp_old = 0;
