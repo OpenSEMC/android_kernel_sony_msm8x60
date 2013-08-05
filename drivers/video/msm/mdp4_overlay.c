@@ -1599,6 +1599,22 @@ int mdp4_mixer_info(int mixer_num, struct mdp_mixer_info *info)
 	return cnt;
 }
 
+void mdp4_mixer_pipe_cleanup(int mixer)
+{
+	struct mdp4_overlay_pipe *pipe;
+	int j;
+
+	for (j = MDP4_MIXER_STAGE_MAX - 1; j > MDP4_MIXER_STAGE_BASE; j--) {
+		pipe = ctrl->stage[mixer][j];
+		if (pipe == NULL)
+			continue;
+		pr_debug("%s(): pipe %u\n", __func__, pipe->pipe_ndx);
+		//FIXME!!! check if commit has to be 1 or 0
+		mdp4_mixer_stage_down(pipe, 1);
+		mdp4_overlay_pipe_free(pipe);
+	}
+}
+
 void mdp4_mixer_stage_commit(int mixer)
 {
 	struct mdp4_overlay_pipe *pipe;
