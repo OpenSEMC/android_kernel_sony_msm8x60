@@ -54,7 +54,7 @@ int mdp_iommu_split_domain;
 u32 mdp_max_clk = 200000000;
 
 static struct platform_device *mdp_init_pdev;
-static struct regulator *footswitch, *dsi_pll_vdda, *dsi_pll_vddio;
+static struct regulator *footswitch, *dsi_pll_vdda, *dsi_pll_vddio, *hdmi_pll_fs;
 static unsigned int mdp_footswitch_on;
 
 struct completion mdp_ppp_comp;
@@ -2307,6 +2307,20 @@ static int mdp_irq_clk_setup(struct platform_device *pdev,
 	}
 	disable_irq(mdp_irq);
 
+	hdmi_pll_fs = regulator_get(&pdev->dev, "hdmi_pll_fs");
+	if (IS_ERR(hdmi_pll_fs)) {
+		hdmi_pll_fs = NULL;
+	} else {
+		if (mdp_rev != MDP_REV_44) {
+			ret = regulator_set_voltage(hdmi_pll_fs, 1800000,
+				1800000);
+			if (ret) {
+				pr_err("set_voltage failed for hdmi_pll_fs, ret=%d\n",
+					ret);
+			}
+		}
+	}
+
 	dsi_pll_vdda = regulator_get(&pdev->dev, "dsi_pll_vdda");
 	if (IS_ERR(dsi_pll_vdda)) {
 		dsi_pll_vdda = NULL;
@@ -2339,6 +2353,9 @@ static int mdp_irq_clk_setup(struct platform_device *pdev,
 	if (IS_ERR(footswitch)) {
 		footswitch = NULL;
 	} else {
+		if (hdmi_pll_fs)
+			regulator_enable(hdmi_pll_fs);
+
 		regulator_enable(footswitch);
 		mdp_footswitch_on = 1;
 
@@ -2939,6 +2956,9 @@ void mdp_footswitch_ctrl(boolean on)
 		return;
 	}
 
+	if (hdmi_pll_fs)
+		regulator_enable(hdmi_pll_fs);
+
 	if (dsi_pll_vddio)
 		regulator_enable(dsi_pll_vddio);
 
@@ -2970,6 +2990,9 @@ void mdp_footswitch_ctrl(boolean on)
 
 	if (dsi_pll_vddio)
 		regulator_disable(dsi_pll_vddio);
+
+	if (hdmi_pll_fs)
+		regulator_disable(hdmi_pll_fs);
 
 	mutex_unlock(&mdp_suspend_mutex);
 }
