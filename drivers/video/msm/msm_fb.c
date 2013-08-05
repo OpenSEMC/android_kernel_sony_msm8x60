@@ -1994,8 +1994,6 @@ static int msm_fb_pan_display_sub(struct fb_var_screeninfo *var,
 	struct msm_fb_panel_data *pdata =
 		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
-	int i, ret;
-
 	/*
 	 * If framebuffer is 2, io pen display is not allowed.
 	 */
