@@ -3065,10 +3065,11 @@ static void hdmi_msm_hdcp_enable(void)
 	external_common_state->hdcp_active = TRUE;
 	mutex_unlock(&hdcp_auth_state_mutex);
 
-	DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
-	envp[0] = "HDCP_STATE=PASS";
-	envp[1] = NULL;
-	kobject_uevent_env(external_common_state->uevent_kobj,
+	if (!hdmi_msm_is_dvi_mode()) {
+		DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
+		envp[0] = "HDCP_STATE=PASS";
+		envp[1] = NULL;
+		kobject_uevent_env(external_common_state->uevent_kobj,
 		    KOBJ_CHANGE, envp);
 
 		SWITCH_SET_HDMI_AUDIO(1, 0);
@@ -4401,7 +4402,6 @@ static int hdmi_msm_power_ctrl(boolean enable)
 static int hdmi_msm_power_on(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
-	int ret = 0;
 	bool changed;
 
 	if (!hdmi_msm_state || !hdmi_msm_state->hdmi_app_clk || !MSM_HDMI_BASE)
@@ -4509,7 +4509,6 @@ EXPORT_SYMBOL(mhl_connect_api);
  */
 static int hdmi_msm_power_off(struct platform_device *pdev)
 {
-	char *envp[2];
 	int ret = 0;
 
 	if (!hdmi_ready()) {
