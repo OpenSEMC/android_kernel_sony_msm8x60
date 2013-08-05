@@ -1577,7 +1577,6 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 	struct dcs_cmd_req *req;
 	u32 dsi_ctrl;
 	int video;
-	u32 dsi_ctrl;
 
 	mutex_lock(&cmd_mutex);
 	req = mipi_dsi_cmdlist_get();

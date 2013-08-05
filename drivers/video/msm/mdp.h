@@ -98,6 +98,7 @@ struct vsync {
 	struct device *dev;
 	struct work_struct vsync_work;
 	int vsync_irq_enabled;
+	int vsync_dma_enabled;
 	int disabled_clocks;
 	struct completion vsync_wait;
 	atomic_t suspend;

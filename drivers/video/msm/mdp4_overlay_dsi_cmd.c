@@ -1103,21 +1103,12 @@ void mdp_dsi_cmd_overlay_suspend(struct msm_fb_data_type *mfd)
 
 static int mdp4_dsi_cmd_clk_check(struct vsycn_ctrl *vctrl)
 {
-	struct vsycn_ctrl *vctrl;
-	struct mdp4_overlay_pipe *pipe;
 	unsigned long flags;
-	struct msm_fb_panel_data *pdata = mfd->pdev->dev.platform_data;
-	int need_dmap_wait = 0;
 	int clk_set_on = 0;
 
 	mutex_lock(&vctrl->update_lock);
-	if (pdata && pdata->power_on_panel_at_pan) {
-		INIT_COMPLETION(vctrl->dmap_comp);
-		need_dmap_wait = 1;
-	}
 	if (atomic_read(&vctrl->suspend)) {
 		mutex_unlock(&vctrl->update_lock);
-		mutex_unlock(&mfd->dma->ov_mutex);
 		pr_err("%s: suspended, no more pan display\n", __func__);
 		return -EPERM;
 	}

@@ -325,11 +325,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
-<<<<<<< HEAD
-	pr_debug("End of %s....:\n", __func__);
-=======
 	pr_debug("%s-:\n", __func__);
->>>>>>> f994901... add missing stuff from @Andromadus kernel after this merging madness
 
 	return ret;
 }

@@ -36,6 +36,8 @@
 
 static int dtv_enabled;
 
+static struct mdp4_overlay_pipe *dtv_pipe;
+
 /*#define DEBUG*/
 #ifdef DEBUG
 static void __mdp_outp(uint32 port, uint32 value)
@@ -546,6 +548,24 @@ static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
 
 	/* enable DTV block */
 	MDP_OUTP(MDP_BASE + DTV_BASE, 1);
+
+	return 0;
+}
+
+static int mdp4_dtv_stop(struct msm_fb_data_type *mfd)
+{
+	if (dtv_pipe == NULL)
+		return -EINVAL;
+
+	/* MDP cmd block enable */
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+	mdp4_mixer_pipe_cleanup(dtv_pipe->mixer_num);
+	msleep(20);
+	MDP_OUTP(MDP_BASE + DTV_BASE, 0);
+	dtv_enabled = 0;
+	/* MDP cmd block disable */
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_pipe_ctrl(MDP_OVERLAY1_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	return 0;
 }
