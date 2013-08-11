@@ -58,6 +58,7 @@
 #include <mach/mpm.h>
 #include "msm_watchdog.h"
 #include <mach/iommu_domains.h>
+#include <mach/kgsl.h>
 
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS	0x16000000
