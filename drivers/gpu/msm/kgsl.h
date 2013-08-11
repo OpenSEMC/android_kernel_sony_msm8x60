@@ -23,6 +23,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/mm.h>
 
+#include <mach/kgsl.h>
+
 #define KGSL_NAME "kgsl"
 
 /* The number of memstore arrays limits the number of contexts allowed.
@@ -270,11 +272,5 @@ kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
 {
 	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
 }
-int kgsl_add_event(struct kgsl_device *device, u32 ts,
-	void (*cb)(struct kgsl_device *, void *, u32), void *priv,
-	void *owner);
-
-void kgsl_cancel_events(struct kgsl_device *device,
-	void *owner);
 
 #endif /* __KGSL_H */

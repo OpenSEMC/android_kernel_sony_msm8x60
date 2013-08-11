@@ -133,8 +133,8 @@ struct kgsl_mh {
 };
 
 struct kgsl_event {
-	struct kgsl_context *context;
 	uint32_t timestamp;
+	struct kgsl_context *context;
 	void (*func)(struct kgsl_device *, void *, u32, u32);
 	void *priv;
 	struct list_head list;
