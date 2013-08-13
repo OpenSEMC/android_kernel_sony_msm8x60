@@ -1581,7 +1581,7 @@ static int adreno_next_event(struct kgsl_device *device,
 
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 
-	status = kgsl_check_timestamp(device, event->timestamp);
+	status = kgsl_check_timestamp(device, event->context, event->timestamp);
 	if (!status) {
 		kgsl_sharedmem_readl(&device->memstore, &enableflag,
 			KGSL_DEVICE_MEMSTORE_OFFSET(ts_cmp_enable));

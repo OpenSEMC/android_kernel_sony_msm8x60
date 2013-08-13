@@ -418,8 +418,6 @@ kgsl_context_destroy(struct kref *kref)
 {
 	struct kgsl_context *context = container_of(kref, struct kgsl_context,
 						    refcount);
-
-	id = context->id;
 	kgsl_sync_timeline_destroy(context);
 	kfree(context);
 }
@@ -435,48 +433,6 @@ static inline int _mark_next_event(struct kgsl_device *device,
 	}
 	return 0;
 }
-
-void kgsl_timestamp_expired(struct work_struct *work)
-{
-	struct kgsl_device *device = container_of(work, struct kgsl_device,
-		ts_expired_ws);
-	struct kgsl_event *event, *event_tmp;
-	uint32_t ts_processed;
-	unsigned int id;
-
-	mutex_lock(&device->mutex);
-
-	while (1) {
-		/* get current EOP timestamp */
-		ts_processed = device->ftbl->readtimestamp(device,
-			KGSL_TIMESTAMP_RETIRED);
-
-		/* Process expired events */
-		list_for_each_entry_safe(event, event_tmp, &device->events, list) {
-			if (timestamp_cmp(ts_processed, event->timestamp) < 0)
-				break;
-
-			if (event->func)
-				event->func(device, event->priv, ts_processed);
-
-			list_del(&event->list);
-			kfree(event);
-		}
-
-		/*
-		 * Keep looping until we hit an event which has not
-		 * passed and then we write a dummy interrupt.
-		 * mark_next_event will return 1 for every event
-		 * that has passed and return 0 for the event which has not
-		 * passed yet.
-		 */
-		if (_mark_next_event(device, &device->events) == 0)
-			break;
-	}
-
-	mutex_unlock(&device->mutex);
-}
-EXPORT_SYMBOL(kgsl_timestamp_expired);
 
 static void kgsl_check_idle_locked(struct kgsl_device *device)
 {
