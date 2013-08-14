@@ -44,6 +44,12 @@ extern u32 mdp_max_clk;
 #define CS_CONTROLLER_0 0x0707ffff
 #define CS_CONTROLLER_1 0x03073f3f
 
+enum mdp4_overlay_status {
+	MDP4_OVERLAY_TYPE_UNSET,
+	MDP4_OVERLAY_TYPE_SET,
+	MDP4_OVERLAY_TYPE_MAX
+};
+
 enum {
 	OVERLAY_PERF_LEVEL1 = 1,
 	OVERLAY_PERF_LEVEL2,
@@ -682,6 +688,12 @@ void mdp4_dsi_cmd_overlay_blt(struct msm_fb_data_type *mfd,
 void mdp4_dsi_video_overlay_blt(struct msm_fb_data_type *mfd,
 					struct msmfb_overlay_blt *req);
 void mdp4_dsi_video_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
+static inline void mdp4_mddi_blt_start(struct msm_fb_data_type *mfd)
+{
+}
+static inline void mdp4_mddi_blt_stop(struct msm_fb_data_type *mfd)
+{
+}
 
 #ifdef CONFIG_FB_MSM_MDP40
 static inline void mdp3_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
@@ -690,6 +702,8 @@ static inline void mdp3_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
 }
 #endif
 #else     /* CONFIG_FB_MSM_MIPI_DSI */
+void mdp4_mddi_blt_start(struct msm_fb_data_type *mfd);
+void mdp4_mddi_blt_stop(struct msm_fb_data_type *mfd);
 int mdp4_mddi_overlay_blt_offset(struct msm_fb_data_type *mfd,
 					struct msmfb_overlay_blt *req);
 void mdp4_mddi_overlay_blt(struct msm_fb_data_type *mfd,
@@ -790,13 +804,32 @@ static inline void mdp4_dsi_cmd_del_timer(void)
 }
 #else /* CONFIG_FB_MSM_MDP303 */
 void mdp4_dsi_cmd_del_timer(void);
+static inline int mdp4_mddi_on(struct platform_device *pdev)
+{
+	return 0;
+}
+static inline int mdp4_mddi_off(struct platform_device *pdev)
+{
+	return 0;
+}
 static inline void mdp4_mddi_wait4vsync(int cndx, long long *vtime)
+{
+}
+static inline void mdp4_mddi_vsync_ctrl(struct fb_info *info, int enable)
+{
+}
+static inline void mdp4_mddi_pipe_queue(int cndx,
+			struct mdp4_overlay_pipe *pipe)
 {
 }
 #endif
 #else  /* CONFIG_FB_MSM_MIPI_DSI */
 
+int mdp4_mddi_off(struct platform_device *pdev);
+int mdp4_mddi_on(struct platform_device *pdev);
 void mdp4_mddi_wait4vsync(int cndx, long long *vtime);
+void mdp4_mddi_vsync_ctrl(struct fb_info *info, int enable);
+void mdp4_mddi_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe);
 
 static inline int mdp4_dsi_cmd_on(struct platform_device *pdev)
 {
@@ -887,6 +920,8 @@ int mdp4_mddi_overlay_cursor(struct fb_info *info, struct fb_cursor *cursor);
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req);
 void mdp4_overlay_resource_release(void);
 uint32_t mdp4_ss_table_value(int8_t param, int8_t index);
+void mdp4_overlay_status_write(enum mdp4_overlay_status type, bool val);
+bool mdp4_overlay_status_read(enum mdp4_overlay_status type);
 void mdp4_overlay_borderfill_stage_down(struct mdp4_overlay_pipe *pipe);
 
 #ifdef CONFIG_FB_MSM_MDP303
