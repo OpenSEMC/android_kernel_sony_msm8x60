@@ -3572,7 +3572,7 @@ int mdp4_overlay_commit(struct fb_info *info)
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
-	msm_fb_wait_for_fence(mfd);
+	//msm_fb_wait_for_fence(mfd);
 
 	if (mixer == MDP4_MIXER0) {
 	  if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD) {
@@ -3584,10 +3584,16 @@ int mdp4_overlay_commit(struct fb_info *info)
           } else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
             /* cndx = 0 */
             mdp4_lcdc_pipe_commit(0, 1);
+	  } else if (ctrl->panel_mode & MDP4_PANEL_WRITEBACK) {
+            /* cndx = 0 */
+            mdp4_wfd_pipe_commit(mfd, 0, 1);
 	  }
 	} else if (mixer == MDP4_MIXER1) {
 	  if (ctrl->panel_mode & MDP4_PANEL_DTV)
             mdp4_dtv_pipe_commit(0, 1);
+	  } else if (ctrl->panel_mode & MDP4_PANEL_WRITEBACK) {
+            /* cndx = 0 */
+            mdp4_wfd_pipe_commit(mfd, 0, 1);
 	  }
 	msm_fb_signal_timeline(mfd);
 
