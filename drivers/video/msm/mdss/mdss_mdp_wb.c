@@ -79,8 +79,21 @@ struct mdss_mdp_data *mdss_mdp_wb_debug_buffer(struct msm_fb_data_type *mfd)
 	img_size = fbi->var.xres * fbi->var.yres * fbi->var.bits_per_pixel / 8;
 	offset = fbi->fix.smem_len - img_size;
 
-	videomemory = fbi->screen_base + offset;
-	mdss_wb_mem = (void *)(fbi->fix.smem_start + offset);
+	if (ihdl == NULL) {
+		ihdl = ion_alloc(mfd->iclient, img_size, SZ_4K,
+				 ION_HEAP(ION_SF_HEAP_ID));
+		if (!IS_ERR_OR_NULL(ihdl)) {
+			videomemory = ion_map_kernel(mfd->iclient, ihdl);
+			ion_phys(mfd->iclient, ihdl, &mdss_wb_mem, &img_size);
+		} else {
+			pr_err("unable to alloc fbmem from ion (%p)\n", ihdl);
+			ihdl = NULL;
+		}
+	}
+
+	if (mdss_wb_mem) {
+		buffer.p[0].addr = (u32) mdss_wb_mem;
+		buffer.p[0].len = img_size;
 
 	buffer.p[0].addr = fbi->fix.smem_start + offset;
 	buffer.p[0].len = img_size;

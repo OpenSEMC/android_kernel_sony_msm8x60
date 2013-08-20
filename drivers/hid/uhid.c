@@ -10,7 +10,7 @@
  * any later version.
  */
 
-//#include <linux/atomic.h>
+#include <linux/atomic.h>
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/hid.h>
@@ -63,7 +63,7 @@ static void uhid_queue(struct uhid_device *uhid, struct uhid_event *ev)
 		uhid->head = newhead;
 		wake_up_interruptible(&uhid->waitq);
 	} else {
-		printk(KERN_WARNING "uhid: Output queue is full\n");
+		hid_warn(uhid->hid, "Output queue is full\n");
 		kfree(ev);
 	}
 }
@@ -328,7 +328,7 @@ static int uhid_dev_create(struct uhid_device *uhid,
 
 	ret = hid_add_device(hid);
 	if (ret) {
-		printk(KERN_ERR "uhid: Cannot register HID device\n");
+		hid_err(hid, "Cannot register HID device\n");
 		goto err_hid;
 	}
 
