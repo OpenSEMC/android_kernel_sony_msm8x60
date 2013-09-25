@@ -49,6 +49,7 @@ static struct clk *mdp_clk;
 static struct clk *mdp_pclk;
 static struct clk *mdp_lut_clk;
 int mdp_rev;
+int mdp_iommu_split_domain;
 u32 mdp_max_clk = 200000000;
 
 static struct platform_device *mdp_init_pdev;
@@ -2398,6 +2399,7 @@ static int mdp_probe(struct platform_device *pdev)
 		}
 
 		mdp_rev = mdp_pdata->mdp_rev;
+		mdp_iommu_split_domain = mdp_pdata->mdp_iommu_split_domain;
 
 		rc = mdp_irq_clk_setup(pdev, mdp_pdata->cont_splash_enabled);
 

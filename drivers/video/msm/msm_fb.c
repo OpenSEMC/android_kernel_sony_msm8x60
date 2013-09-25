@@ -1464,6 +1464,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fbi->screen_base = fbram;
 	fbi->fix.smem_start = (unsigned long)fbram_phys;
 
+/* jb_mr1_chocolate
 	mfd->map_buffer = msm_subsystem_map_buffer(
 		fbi->fix.smem_start, fbi->fix.smem_len,
 		flags, subsys_id, 2);
@@ -1473,6 +1474,24 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 			fbi->fix.smem_start, mfd->map_buffer->iova[0],
 			mfd->map_buffer->iova[1]);
 	}
+*/
+
+	msm_iommu_map_contig_buffer(fbi->fix.smem_start,
+					DISPLAY_READ_DOMAIN,
+					GEN_POOL,
+					fbi->fix.smem_len,
+					SZ_4K,
+					0,
+					&(mfd->display_iova));
+
+	msm_iommu_map_contig_buffer(fbi->fix.smem_start,
+					ROTATOR_SRC_DOMAIN,
+					GEN_POOL,
+					fbi->fix.smem_len,
+					SZ_4K,
+					0,
+					&(mfd->rotator_iova));
+
 	if (!bf_supported || mfd->index == 0)
 		memset(fbi->screen_base, 0x0, fix->smem_len);
 

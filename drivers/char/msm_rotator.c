@@ -108,6 +108,8 @@
 #define ROTATOR_REVISION_NONE	0xffffffff
 
 uint32_t rotator_hw_revision;
+
+// iommu pipe splitting
 static char rot_iommu_split_domain;
 
 /*
