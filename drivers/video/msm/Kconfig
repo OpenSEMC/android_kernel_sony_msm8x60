@@ -89,6 +89,16 @@ config FB_MSM_MDP_NONE
 	---help---
 	  Say Y here if this is mdm platform.
 
+config FB_MSM_MDSS
+	bool "MDSS HW"
+	---help---
+	The Mobile Display Sub System (MDSS) driver supports devices which
+	contain MDSS hardware block.
+
+	The MDSS driver implements frame buffer interface to provide access to
+	the display hardware and provide a way for users to display graphics
+	on connected display panels.
+
 endchoice
 
 config FB_MSM_EBI2
@@ -104,6 +114,10 @@ config FB_MSM_MIPI_DSI
 	default n
 
 config FB_MSM_LCDC
+	bool
+	default n
+
+config FB_MSM_LVDS
 	bool
 	default n
 
@@ -158,6 +172,10 @@ config FB_MSM_LCDC_AUTO_DETECT
 config FB_MSM_LCDC_PANEL
 	bool
 	select FB_MSM_LCDC
+	default n
+
+config FB_MSM_MIPI_DSI_VENDOR_DET
+	bool
 	default n
 
 config FB_MSM_MIPI_DSI_TOSHIBA
@@ -256,6 +274,19 @@ config FB_MSM_LCDC_AUO_WVGA
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_TRULY_HVGA_IPS3P2335
+        bool
+        select FB_MSM_LCDC_PANEL
+        default n
+
+config FB_MSM_LCDC_TRULY_HVGA_IPS3P2335_PT_PANEL
+        depends on FB_MSM_LCDC_HW
+        bool "LCDC Truly HVGA PT Panel"
+        select FB_MSM_LCDC_TRULY_HVGA_IPS3P2335
+        default n
+        ---help---
+        Support for LCDC Truly HVGA PT panel
+
 config FB_MSM_LCDC_SAMSUNG_OLED_PT
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -269,6 +300,16 @@ config FB_MSM_LCDC_NT35582_WVGA
 config FB_MSM_LCDC_WXGA
 	bool
 	select FB_MSM_LCDC_PANEL
+	default n
+
+config FB_MSM_LVDS_CHIMEI_WXGA
+	bool
+	select FB_MSM_LVDS
+	default n
+
+config FB_MSM_LVDS_FRC_FHD
+	bool
+	select FB_MSM_LVDS
 	default n
 
 config FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT
@@ -966,4 +1007,8 @@ config FB_MSM_EBI2_PANEL_DETECT
 	default n
 	---help---
 	  Support for EBI2 panel auto detect
+
+if FB_MSM_MDSS
+	source "drivers/video/msm/mdss/Kconfig"
+endif
 endif
