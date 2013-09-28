@@ -210,10 +210,8 @@ struct msm_fb_panel_data {
 	int (*power_ctrl) (boolean enable);
 	struct platform_device *next;
 	int (*clk_func) (int enable);
-/* jb_mr1_chocolate
 	struct msm_panel_info *(*panel_detect) (struct msm_fb_data_type *mfd);
 	int (*update_panel) (struct platform_device *pdev);
-*/
 	int (*fps_level_change) (struct platform_device *pdev,
 					u32 fps_level);
 };

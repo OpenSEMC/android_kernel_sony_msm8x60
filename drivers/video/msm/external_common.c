@@ -229,6 +229,7 @@ static ssize_t hdmi_common_rda_edid_modes(struct device *dev,
 			msm_hdmi_mode_2string(get_best_display_Mode()));
 #else
 	DEV_DBG("%s: '%s'\n", __func__, buf);
+#endif
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
 	return ret;
 }

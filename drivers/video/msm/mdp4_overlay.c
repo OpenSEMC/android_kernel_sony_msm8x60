@@ -2201,6 +2201,7 @@ void mdp4_mixer_blend_setup(int mixer)
 {
 	struct mdp4_overlay_pipe *d_pipe;
 	struct mdp4_overlay_pipe *s_pipe;
+	struct mdp4_overlay_perf *perf_cur = &perf_current;
 	struct blend_cfg *blend;
 	int i, off, alpha_drop;
 	unsigned char *overlay_base;
@@ -2850,7 +2851,9 @@ static int mdp4_calc_req_blt(struct msm_fb_data_type *mfd,
 		 req->src_rect.w, req->dst_rect.w);
 
 	if (clk > mdp_max_clk * 2) {
+		/* FIXME!!
 		pr_err("%s: blt required, clk=%d max=%d", clk, mdp_max_clk * 2);
+		*/		
 		ret = -EINVAL;
 	}
 
@@ -3039,7 +3042,7 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd)
 	u32 worst_mdp_clk = 0;
 	int i;
 	struct mdp4_overlay_perf *perf_req = &perf_request;
-	struct mdp4_overlay_perf *perf_cur = &perf_current;
+	//struct mdp4_overlay_perf *perf_cur = &perf_current;
 	struct mdp4_overlay_pipe *pipe;
 	u32 cnt = 0;
 	int ret = -EINVAL;
@@ -3539,6 +3542,16 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 
 		}
 	}
+
+	if(DMB_Qseed_change == 2 && which_pipe_for_DMB > 0)
+	{
+
+		printk("### call mdp4_vg_qseed_init_VideoPlay\n");
+		mdp4_vg_qseed_init_VideoPlay(which_pipe_for_DMB-1);
+		DMB_Qseed_change = 0;
+		which_pipe_for_DMB = 0;
+	}
+#endif
 
 	/* return id back to user */
 	req->id = pipe->pipe_ndx;	/* pipe_ndx start from 1 */
