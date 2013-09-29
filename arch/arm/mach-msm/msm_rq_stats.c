@@ -11,7 +11,7 @@
  *
  */
 /*
- * Qualcomm MSM Runqueue Stats Interface for Userspace
+ * Qualcomm MSM Runqueue Stats and cpu utilization Interface for Userspace
  */
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -26,6 +26,9 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/rq_stats.h>
+#include <linux/cpufreq.h>
+#include <linux/kernel_stat.h>
+#include <linux/tick.h>
 #include <asm/smp_plat.h>
 
 #define MAX_LONG_SIZE 24
@@ -121,7 +124,18 @@ static struct kobj_attribute def_timer_ms_attr =
 	__ATTR(def_timer_ms, S_IWUSR | S_IRUSR, show_def_timer_ms,
 			store_def_timer_ms);
 
+static ssize_t show_cpu_normalized_load(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, MAX_LONG_SIZE, "%u\n", report_load_at_max_freq());
+}
+
+static struct kobj_attribute cpu_normalized_load_attr =
+	__ATTR(cpu_normalized_load, S_IWUSR | S_IRUSR, show_cpu_normalized_load,
+			NULL);
+
 static struct attribute *rq_attrs[] = {
+	&cpu_normalized_load_attr.attr,
 	&def_timer_ms_attr.attr,
 	&run_queue_avg_attr.attr,
 	&run_queue_poll_ms_attr.attr,
@@ -157,7 +171,8 @@ static int init_rq_attribs(void)
 static int __init msm_rq_stats_init(void)
 {
 	int ret;
-
+	int i;
+	struct cpufreq_policy cpu_policy;
 	/* Bail out if this is not an SMP Target */
 	if (!is_smp()) {
 		rq_info.init = 0;

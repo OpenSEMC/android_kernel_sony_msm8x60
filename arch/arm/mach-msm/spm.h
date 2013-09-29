@@ -141,6 +141,12 @@ int msm_spm_set_low_power_mode(unsigned int mode, bool notify_rpm);
 int msm_spm_set_vdd(unsigned int cpu, unsigned int vlevel);
 
 /**
+ * msm_spm_get_vdd(): Get core voltage
+ * @cpu: core id
+ */
+unsigned int msm_spm_get_vdd(unsigned int cpu);
+
+/**
  * msm_spm_turn_on_cpu_rail(): Power on cpu rail before turning on core
  * @cpu: core id
  */

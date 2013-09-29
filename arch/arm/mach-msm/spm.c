@@ -69,6 +69,7 @@ struct msm_spm_device {
 	unsigned int low_power_mode;
 	bool notify_rpm;
 	bool dirty;
+	uint32_t cpu_vdd;
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct msm_spm_device, msm_spm_devices);
@@ -233,6 +234,16 @@ set_vdd_bail:
 	       __func__, cpu, timeout_us, msm_spm_get_sts_curr_pmic_data(dev));
 
 	return -EIO;
+}
+
+static DEFINE_PER_CPU_SHARED_ALIGNED(struct msm_spm_device, msm_cpu_spm_device);
+
+unsigned int msm_spm_get_vdd(unsigned int cpu)
+{
+	struct msm_spm_device *dev;
+
+	dev = &per_cpu(msm_cpu_spm_device, cpu);
+	return dev->cpu_vdd;
 }
 
 void msm_spm_reinit(void)
