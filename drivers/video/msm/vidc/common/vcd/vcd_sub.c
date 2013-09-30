@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -120,9 +120,11 @@ static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr,
 				0,
 				(unsigned long *)&iova,
 				(unsigned long *)&buffer_size,
-				UNCACHED, 0);
-			if (ret) {
-				pr_err("%s() ION iommu map failed", __func__);
+				0, 0);
+			if (ret || !iova) {
+				pr_err(
+				"%s() ION iommu map failed, ret = %d, iova = 0x%lx",
+					__func__, ret, iova);
 				goto ion_map_bailout;
 			}
 			map_buffer->phy_addr = iova;
@@ -783,7 +785,11 @@ u32 vcd_free_one_buffer_internal(
 		buf_pool->allocated--;
 	}
 
-	memset(buf_entry, 0, sizeof(struct vcd_buffer_entry));
+	buf_entry->valid = buf_entry->allocated = buf_entry->in_use = 0;
+	buf_entry->alloc = buf_entry->virtual = buf_entry->physical = NULL;
+	buf_entry->sz = 0;
+	memset(&buf_entry->frame, 0, sizeof(struct vcd_frame_data));
+
 	buf_pool->validated--;
 	if (buf_pool->validated == 0)
 		vcd_free_buffer_pool_entries(buf_pool);
@@ -1721,6 +1727,7 @@ void vcd_send_frame_done_in_eos_for_dec(
 	u32 rc;
 	struct ddl_frame_data_tag ddl_frm;
 
+	VCD_MSG_LOW("%s: ", __func__);
 	prop_hdr.prop_id = DDL_I_DPB_RETRIEVE;
 	prop_hdr.sz = sizeof(struct ddl_frame_data_tag);
 	memset(&ddl_frm, 0, sizeof(ddl_frm));
@@ -1839,19 +1846,25 @@ u32 vcd_handle_recvd_eos(
 	*pb_eos_handled = false;
 
 	if (input_frame->virtual &&
-			input_frame->data_len)
+			input_frame->data_len) {
+		VCD_MSG_LOW("%s: data available with EOS buffer", __func__);
 		return VCD_S_SUCCESS;
+	}
 
 	input_frame->data_len = 0;
 	rc = vcd_sched_mark_client_eof(cctxt->sched_clnt_hdl);
-	if (VCD_FAILED(rc) && rc != VCD_ERR_QEMPTY)
+	if (VCD_FAILED(rc) && rc != VCD_ERR_QEMPTY) {
+		VCD_MSG_LOW("%s: rc = %u", __func__, rc);
 		return rc;
+	}
 
-	if (rc == VCD_S_SUCCESS)
+	if (rc == VCD_S_SUCCESS) {
 		*pb_eos_handled = true;
-	else if (cctxt->decoding && !input_frame->virtual)
+		VCD_MSG_LOW("%s: EOS handled", __func__);
+	} else if (cctxt->decoding && !input_frame->virtual) {
 		cctxt->sched_clnt_hdl->tkns++;
-	else if (!cctxt->decoding && !cctxt->status.frame_delayed) {
+		VCD_MSG_LOW("%s: decoding & virtual addr is NULL", __func__);
+	} else if (!cctxt->decoding && !cctxt->status.frame_delayed) {
 		if (!cctxt->status.frame_submitted) {
 			vcd_send_frame_done_in_eos(cctxt, input_frame, false);
 			if (cctxt->status.mask & VCD_EOS_WAIT_OP_BUF)
@@ -1873,6 +1886,8 @@ u32 vcd_handle_recvd_eos(
 	if (*pb_eos_handled &&
 		input_frame->virtual &&
 		!input_frame->data_len) {
+		VCD_MSG_LOW("%s: sending INPUT_DONE as eos was handled",
+			__func__);
 		cctxt->callback(VCD_EVT_RESP_INPUT_DONE,
 				  VCD_S_SUCCESS,
 				  input_frame,
@@ -2017,6 +2032,11 @@ u32 vcd_handle_input_done(
 	orig_frame = vcd_find_buffer_pool_entry(&cctxt->in_buf_pool,
 					 transc->ip_buf_entry->virtual);
 
+	if (!orig_frame) {
+		rc = VCD_ERR_ILLEGAL_PARM;
+		VCD_FAILED_RETURN(rc, "Couldn't find buffer");
+	}
+
 	if ((transc->ip_buf_entry->frame.virtual !=
 		 frame->vcd_frm.virtual)
 		|| !transc->ip_buf_entry->in_use) {
@@ -2043,8 +2063,11 @@ u32 vcd_handle_input_done(
 		return VCD_ERR_FAIL;
 	}
 
-	if (orig_frame != transc->ip_buf_entry)
+	if (orig_frame != transc->ip_buf_entry) {
+		VCD_MSG_HIGH("%s: free duplicate buffer", __func__);
 		kfree(transc->ip_buf_entry);
+		transc->ip_buf_entry = NULL;
+	}
 	transc->ip_buf_entry = NULL;
 	transc->input_done = true;
 
@@ -2055,7 +2078,7 @@ u32 vcd_handle_input_done(
 	}
 
 	if (VCD_FAILED(status)) {
-		VCD_MSG_ERROR("INPUT_DONE returned err = 0x%x", status);
+		VCD_MSG_HIGH("INPUT_DONE returned err = 0x%x", status);
 		vcd_handle_input_done_failed(cctxt, transc);
 	} else
 		cctxt->status.mask |= VCD_FIRST_IP_DONE;
@@ -2337,10 +2360,12 @@ u32 vcd_handle_frame_done(
 	op_frm->vcd_frm.time_stamp = transc->time_stamp;
 	op_frm->vcd_frm.ip_frm_tag = transc->ip_frm_tag;
 
-	if (transc->flags & VCD_FRAME_FLAG_EOSEQ)
-		op_frm->vcd_frm.flags |= VCD_FRAME_FLAG_EOSEQ;
-	else
-		op_frm->vcd_frm.flags &= ~VCD_FRAME_FLAG_EOSEQ;
+	if (!(op_frm->vcd_frm.flags & VCD_FRAME_FLAG_EOSEQ)) {
+		if (transc->flags & VCD_FRAME_FLAG_EOSEQ)
+			op_frm->vcd_frm.flags |= VCD_FRAME_FLAG_EOSEQ;
+		else
+			op_frm->vcd_frm.flags &= ~VCD_FRAME_FLAG_EOSEQ;
+	}
 
 	if (cctxt->decoding)
 		op_frm->vcd_frm.frame = transc->frame;
@@ -2475,6 +2500,7 @@ u32 vcd_handle_first_fill_output_buffer_for_enc(
 	struct vcd_sequence_hdr seq_hdr;
 	struct vcd_property_sps_pps_for_idr_enable idr_enable;
 	struct vcd_property_codec codec;
+	u8 *kernel_vaddr = NULL;
 	*handled = true;
 	prop_hdr.prop_id = DDL_I_SEQHDR_PRESENT;
 	prop_hdr.sz = sizeof(seqhdr_present);
@@ -2502,7 +2528,7 @@ u32 vcd_handle_first_fill_output_buffer_for_enc(
 			if (!cctxt->secure) {
 				prop_hdr.prop_id = VCD_I_SEQ_HEADER;
 				prop_hdr.sz = sizeof(struct vcd_sequence_hdr);
-				seq_hdr.sequence_header = frm_entry->virtual;
+				seq_hdr.sequence_header = kernel_vaddr;
 				seq_hdr.sequence_header_len =
 					frm_entry->alloc_len;
 				rc = ddl_get_property(cctxt->ddl_handle,
@@ -2513,6 +2539,8 @@ u32 vcd_handle_first_fill_output_buffer_for_enc(
 					frm_entry->time_stamp = 0;
 					frm_entry->flags |=
 						VCD_FRAME_FLAG_CODECCONFIG;
+					VCD_MSG_LOW("%s: header len = %u",
+						__func__, frm_entry->data_len);
 				} else
 					VCD_MSG_ERROR("rc = 0x%x. Failed:"
 							"ddl_get_property: VCD_I_SEQ_HEADER",
@@ -2821,6 +2849,7 @@ u32 vcd_handle_input_frame(
 	struct vcd_frame_data *frm_entry;
 	u32 rc = VCD_S_SUCCESS;
 	u32 eos_handled = false;
+	u32 duplicate_buffer = false;
 
 	VCD_MSG_LOW("vcd_handle_input_frame:");
 
@@ -2904,6 +2933,8 @@ u32 vcd_handle_input_frame(
 		buf_entry->allocated = orig_frame->allocated;
 		buf_entry->in_use = 1; /* meaningless for the dupe buffers */
 		buf_entry->frame = orig_frame->frame;
+		duplicate_buffer = true;
+		VCD_MSG_HIGH("%s: duplicate buffer", __func__);
 	} else
 		buf_entry = orig_frame;
 
@@ -2927,6 +2958,10 @@ u32 vcd_handle_input_frame(
 	if (VCD_FAILED(rc) || eos_handled) {
 		VCD_MSG_HIGH("rc = 0x%x, eos_handled = %d", rc,
 				 eos_handled);
+		if ((duplicate_buffer) && (buf_entry)) {
+			kfree(buf_entry);
+			buf_entry = NULL;
+		}
 
 		return rc;
 	}
@@ -3094,20 +3129,30 @@ u32 vcd_req_perf_level(
 {
 	u32 rc;
 	u32 res_trk_perf_level;
+	u32 turbo_perf_level;
 	if (!perf_level) {
 		VCD_MSG_ERROR("Invalid parameters\n");
 		return -EINVAL;
 	}
 	res_trk_perf_level = get_res_trk_perf_level(perf_level->level);
-	if (res_trk_perf_level < 0) {
+	if ((int)res_trk_perf_level < 0) {
 		rc = -ENOTSUPP;
+		VCD_MSG_ERROR("%s: unsupported perf level(%d)",
+			__func__, res_trk_perf_level);
 		goto perf_level_not_supp;
 	}
+	turbo_perf_level = get_res_trk_perf_level(VCD_PERF_LEVEL_TURBO);
 	rc = vcd_set_perf_level(cctxt->dev_ctxt, res_trk_perf_level);
 	if (!rc) {
 		cctxt->reqd_perf_lvl = res_trk_perf_level;
 		cctxt->perf_set_by_client = 1;
+		if (res_trk_perf_level == turbo_perf_level)
+			cctxt->is_turbo_enabled = true;
 	}
+	VCD_MSG_HIGH("%s: client perf level = %u, "\
+		"perf_set_by_client = %u, is_turbo_enabled = %u",
+		__func__, cctxt->reqd_perf_lvl, cctxt->perf_set_by_client,
+		cctxt->is_turbo_enabled);
 perf_level_not_supp:
 	return rc;
 }
@@ -3512,6 +3557,17 @@ u32 vcd_set_num_slices(struct vcd_clnt_ctxt *cctxt)
 					__func__, cctxt->num_slices);
 	} else {
 		cctxt->num_slices = 1;
+	}
+	return rc;
+}
+
+u32 vcd_handle_ltr_use_failed(struct vcd_clnt_ctxt *cctxt,
+	void *payload, size_t sz, u32 status)
+{
+	u32 rc = VCD_S_SUCCESS;
+	if (payload && cctxt) {
+		cctxt->callback(VCD_EVT_IND_INFO_LTRUSE_FAILED,
+			status, payload, sz, cctxt, cctxt->client_data);
 	}
 	return rc;
 }

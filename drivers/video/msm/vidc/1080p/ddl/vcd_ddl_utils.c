@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -77,11 +77,6 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 						 __func__);
 			goto bail_out;
 		}
-		if (res_trk_check_for_sec_session() ||
-			addr->mem_type == DDL_FW_MEM)
-			ionflag = UNCACHED;
-		else
-			ionflag = CACHED;
 		kernel_vaddr = (unsigned long *) ion_map_kernel(
 					ddl_context->video_ion_client,
 					addr->alloc_handle, ionflag);
@@ -111,14 +106,19 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 					0,
 					&iova,
 					&buffer_size,
-					UNCACHED, 0);
-			if (ret) {
+					0, 0);
+			if (ret || !iova) {
 				DDL_MSG_ERROR(
-				"%s():DDL ION ion map iommu failed\n",
-				 __func__);
+				"%s():DDL ION ion map iommu failed, ret = %d iova = 0x%lx\n",
+					__func__, ret, iova);
 				goto unmap_ion_alloc;
 			}
 			addr->alloced_phys_addr = (phys_addr_t) iova;
+
+			msm_ion_do_cache_op(ddl_context->video_ion_client,
+					addr->alloc_handle,
+					addr->virtual_base_addr,
+					sz, ION_IOC_CLEAN_INV_CACHES);
 		}
 		if (!addr->alloced_phys_addr) {
 			DDL_MSG_ERROR("%s():DDL ION client physical failed\n",
@@ -427,7 +427,7 @@ void ddl_set_core_start_time(const char *func_name, u32 index)
 		time_data->ddl_t1 = act_time;
 		DDL_MSG_LOW("\n%s(): Start Time (%u)", func_name, act_time);
 	} else if (vidc_msg_timing) {
-		DDL_MSG_TIME("\n%s(): Timer already started! St(%u) Act(%u)",
+		DDL_MSG_LOW("\n%s(): Timer already started! St(%u) Act(%u)",
 			func_name, time_data->ddl_t1, act_time);
 	}
 }
