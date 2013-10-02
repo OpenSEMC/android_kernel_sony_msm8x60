@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,10 +25,11 @@
 #include "vidc.h"
 #include "vcd_res_tracker.h"
 
+#define PIL_FW_BASE_ADDR 0xafe00000
 #define PIL_FW_SIZE 0x200000
 
-static unsigned int vidc_clk_table[5] = {
-	48000000, 133330000, 200000000, 228570000, 266670000,
+static unsigned int vidc_clk_table[4] = {
+	48000000, 133330000, 200000000, 228570000,
 };
 static unsigned int restrk_mmu_subsystem[] =	{
 		MSM_SUBSYSTEM_VIDEO, MSM_SUBSYSTEM_VIDEO_FWARE};
@@ -84,11 +85,10 @@ static void *res_trk_pmem_map
 				0,
 				&iova,
 				&buffer_size,
-				0, 0);
-		if (ret || !iova) {
-			DDL_MSG_ERROR(
-			"%s():DDL ION client iommu map failed, ret = %d iova = 0x%lx\n",
-			__func__, ret, iova);
+				UNCACHED, 0);
+		if (ret) {
+			DDL_MSG_ERROR("%s():DDL ION client iommu map failed\n",
+						 __func__);
 			goto ion_unmap_bail_out;
 		}
 		addr->mapped_buffer = NULL;
@@ -105,18 +105,18 @@ static void *res_trk_pmem_map
 				pr_err(" %s() alloced addres NULL", __func__);
 				goto bail_out;
 			}
-			flags = MSM_SUBSYSTEM_MAP_IOVA |
-				MSM_SUBSYSTEM_MAP_KADDR;
+			flags = MSM_SUBSYSTEM_MAP_IOVA|MSM_SUBSYSTEM_MAP_KADDR;
 			if (alignment == DDL_KILO_BYTE(128))
 					index = 1;
 			else if (alignment > SZ_4K)
 				flags |= MSM_SUBSYSTEM_ALIGN_IOVA_8K;
+
 			addr->mapped_buffer =
 			msm_subsystem_map_buffer(
 			(unsigned long)addr->alloced_phys_addr,
 			sz, flags, &restrk_mmu_subsystem[index],
-			sizeof(restrk_mmu_subsystem[index])/
-				sizeof(unsigned int));
+			sizeof(restrk_mmu_subsystem[index])
+			/sizeof(unsigned int));
 			if (IS_ERR(addr->mapped_buffer)) {
 				pr_err(" %s() buffer map failed", __func__);
 				goto bail_out;
@@ -126,15 +126,13 @@ static void *res_trk_pmem_map
 				pr_err("%s() map buffers failed\n", __func__);
 				goto bail_out;
 			}
-			addr->physical_base_addr =
-				 (u8 *)mapped_buffer->iova[0];
-			addr->virtual_base_addr =
-					mapped_buffer->vaddr;
+			addr->physical_base_addr = (u8 *)mapped_buffer->iova[0];
+			addr->virtual_base_addr = mapped_buffer->vaddr;
 		} else {
-			addr->physical_base_addr =
-				(u8 *) addr->alloced_phys_addr;
-			addr->virtual_base_addr =
-				(u8 *)addr->alloced_phys_addr;
+			addr->physical_base_addr = (u8 *)
+					 addr->alloced_phys_addr;
+			addr->virtual_base_addr = (u8 *)
+					addr->alloced_phys_addr;
 		}
 		addr->align_physical_addr = (u8 *) DDL_ALIGN((u32)
 		addr->physical_base_addr, alignment);
@@ -145,7 +143,7 @@ static void *res_trk_pmem_map
 	}
 	return addr->virtual_base_addr;
 bail_out:
-	if (IS_ERR(addr->mapped_buffer))
+	if (addr->mapped_buffer)
 		msm_subsystem_unmap_buffer(addr->mapped_buffer);
 	return NULL;
 ion_unmap_bail_out:
@@ -159,35 +157,21 @@ ion_bail_out:
 
 static void res_trk_pmem_free(struct ddl_buf_addr *addr)
 {
+	/* TODO Pmem*/
 	struct ddl_context *ddl_context;
-
-	if (!addr) {
-		DDL_MSG_ERROR("\n%s() NULL address", __func__);
-		return;
-	}
-
 	ddl_context = ddl_get_context();
 	if (ddl_context->video_ion_client) {
-		if (addr->alloc_handle) {
-			ion_free(ddl_context->video_ion_client,
-			 addr->alloc_handle);
+		if (addr && addr->alloc_handle) {
+			ion_free(ddl_context->video_ion_client, addr->alloc_handle);
 			addr->alloc_handle = NULL;
 		}
-	} else {
-		if (addr->mapped_buffer)
-			msm_subsystem_unmap_buffer(addr->mapped_buffer);
-		if (addr->alloced_phys_addr)
-			free_contiguous_memory_by_paddr(
-			(unsigned long)addr->alloced_phys_addr);
 	}
-	memset(addr, 0 , sizeof(struct ddl_buf_addr));
 }
 static int res_trk_pmem_alloc
 	(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 {
 	u32 alloc_size;
 	struct ddl_context *ddl_context;
-	unsigned long fw_addr;
 	int rc = 0;
 	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
 	if (!addr) {
@@ -199,33 +183,29 @@ static int res_trk_pmem_alloc
 	res_trk_set_mem_type(addr->mem_type);
 	alloc_size = (sz + alignment);
 	if (res_trk_get_enable_ion()) {
-		if (!res_trk_is_cp_enabled() ||
-			 !res_trk_check_for_sec_session()) {
+		if (!res_trk_is_cp_enabled() || !res_trk_check_for_sec_session()) {
 			if (!ddl_context->video_ion_client)
 				ddl_context->video_ion_client =
 					res_trk_get_ion_client();
 			if (!ddl_context->video_ion_client) {
-				DDL_MSG_ERROR(
-				"%s() :DDL ION Client Invalid handle\n",
-						__func__);
+				DDL_MSG_ERROR("%s() :DDL ION Client Invalid handle\n",
+							 __func__);
 				rc = -ENOMEM;
 				goto bail_out;
 			}
 			alloc_size = (alloc_size+4095) & ~4095;
 			addr->alloc_handle = ion_alloc(
-					ddl_context->video_ion_client,
-					 alloc_size, SZ_4K,
-					res_trk_get_mem_type());
+			ddl_context->video_ion_client, alloc_size, SZ_4K,
+				res_trk_get_mem_type());
 			if (IS_ERR_OR_NULL(addr->alloc_handle)) {
 				DDL_MSG_ERROR("%s() :DDL ION alloc failed\n",
-						__func__);
+							 __func__);
 				rc = -ENOMEM;
 				goto bail_out;
 			}
 		} else {
-			fw_addr = resource_context.vidc_platform_data->fw_addr;
 			addr->alloc_handle = NULL;
-			addr->alloced_phys_addr = fw_addr;
+			addr->alloced_phys_addr = PIL_FW_BASE_ADDR;
 			addr->buffer_size = sz;
 		}
 	} else {
@@ -350,11 +330,11 @@ u32 res_trk_enable_clocks(void)
 		VCDRES_MSG_LOW("%s(): Enabling the clocks\n", __func__);
 		if (resource_context.vcodec_clk &&
 			resource_context.vcodec_pclk) {
-			if (clk_prepare_enable(resource_context.vcodec_pclk)) {
+			if (clk_enable(resource_context.vcodec_pclk)) {
 				VCDRES_MSG_ERROR("vidc pclk Enable fail\n");
 				goto bail_out;
 			}
-			if (clk_prepare_enable(resource_context.vcodec_clk)) {
+			if (clk_enable(resource_context.vcodec_clk)) {
 				VCDRES_MSG_ERROR("vidc core clk Enable fail\n");
 				goto vidc_disable_pclk;
 			}
@@ -370,7 +350,7 @@ u32 res_trk_enable_clocks(void)
 	mutex_unlock(&resource_context.lock);
 	return true;
 vidc_disable_pclk:
-	clk_disable_unprepare(resource_context.vcodec_pclk);
+	clk_disable(resource_context.vcodec_pclk);
 bail_out:
 	mutex_unlock(&resource_context.lock);
 	return false;
@@ -382,6 +362,7 @@ static u32 res_trk_sel_clk_rate(unsigned long hclk_rate)
 	mutex_lock(&resource_context.lock);
 	if (clk_set_rate(resource_context.vcodec_clk,
 		hclk_rate)) {
+		VCDRES_MSG_ERROR("vidc hclk set rate failed\n");
 		status = false;
 	} else
 		resource_context.vcodec_clk_rate = hclk_rate;
@@ -416,9 +397,9 @@ u32 res_trk_disable_clocks(void)
 		VCDRES_MSG_LOW("%s(): Disabling the clocks ...\n", __func__);
 		resource_context.clock_enabled = 0;
 		if (resource_context.vcodec_clk)
-			clk_disable_unprepare(resource_context.vcodec_clk);
+			clk_disable(resource_context.vcodec_clk);
 		if (resource_context.vcodec_pclk)
-			clk_disable_unprepare(resource_context.vcodec_pclk);
+			clk_disable(resource_context.vcodec_pclk);
 		status = true;
 	}
 	mutex_unlock(&resource_context.lock);
@@ -433,9 +414,7 @@ static u32 res_trk_vidc_pwr_up(void)
 		VCDRES_MSG_ERROR("Error : pm_runtime_get failed\n");
 		goto bail_out;
 	}
-	if (!resource_context.footswitch)
-		resource_context.footswitch =
-			regulator_get(resource_context.device, "vdd");
+	resource_context.footswitch = regulator_get(NULL, "fs_ved");
 	if (IS_ERR(resource_context.footswitch)) {
 		VCDRES_MSG_ERROR("foot switch get failed\n");
 		resource_context.footswitch = NULL;
@@ -464,8 +443,7 @@ int res_trk_enable_footswitch(void)
 {
 	int rc = 0;
 	mutex_lock(&resource_context.lock);
-	if (!resource_context.footswitch)
-		resource_context.footswitch = regulator_get(NULL, "fs_ved");
+	resource_context.footswitch = regulator_get(NULL, "fs_ved");
 	if (IS_ERR(resource_context.footswitch)) {
 		VCDRES_MSG_ERROR("foot switch get failed\n");
 		resource_context.footswitch = NULL;
@@ -526,20 +504,12 @@ u32 res_trk_power_down(void)
 
 u32 res_trk_get_max_perf_level(u32 *pn_max_perf_lvl)
 {
-	bool turbo_supported =
-		!resource_context.vidc_platform_data->disable_turbo;
-
 	if (!pn_max_perf_lvl) {
 		VCDRES_MSG_ERROR("%s(): pn_max_perf_lvl is NULL\n",
 			__func__);
 		return false;
 	}
-	if (turbo_supported)
-		*pn_max_perf_lvl = RESTRK_1080P_TURBO_PERF_LEVEL;
-	else
-		*pn_max_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
-	VCDRES_MSG_MED("%s: %u", __func__, (u32)*pn_max_perf_lvl);
-
+	*pn_max_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
 	return true;
 }
 
@@ -550,6 +520,7 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 	u32 enc_perf_level = 0, dec_perf_level = 0;
 	u32 bus_clk_index, client_type = 0;
 	int rc = 0;
+	bool turbo_enabled = false;
 	bool turbo_supported =
 		!resource_context.vidc_platform_data->disable_turbo;
 
@@ -559,6 +530,9 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 			dec_perf_level += cctxt_itr->reqd_perf_lvl;
 		else
 			enc_perf_level += cctxt_itr->reqd_perf_lvl;
+
+		if (cctxt_itr->is_turbo_enabled)
+			turbo_enabled = true;
 		cctxt_itr = cctxt_itr->next;
 	}
 
@@ -575,8 +549,18 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 
 	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0)
 		bus_clk_index = 2;
-	else if (!turbo_supported && bus_clk_index == 3)
+	else if ((!turbo_supported || !turbo_enabled) && bus_clk_index == 3) {
+		if (!turbo_supported)
+			VCDRES_MSG_MED("Warning: Turbo mode not supported "\
+					" falling back to 1080p bus\n");
 		bus_clk_index = 2;
+	}
+
+	if (bus_clk_index == 3)
+		dev_ctxt->turbo_mode_set = true;
+	else
+		dev_ctxt->turbo_mode_set = false;
+
 	bus_clk_index = (bus_clk_index << 1) + (client_type + 1);
 	VCDRES_MSG_LOW("%s(), bus_clk_index = %d", __func__, bus_clk_index);
 	VCDRES_MSG_LOW("%s(),context.pcl = %x", __func__, resource_context.pcl);
@@ -599,7 +583,6 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 			__func__, dev_ctxt);
 		return false;
 	}
-
 	VCDRES_MSG_LOW("%s(), req_perf_lvl = %d", __func__, req_perf_lvl);
 
 	if (!turbo_supported && req_perf_lvl > RESTRK_1080P_MAX_PERF_LEVEL) {
@@ -607,14 +590,16 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 			__func__, dev_ctxt);
 	}
 
-	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0) {
-		if (turbo_supported)
-			req_perf_lvl = RESTRK_1080P_TURBO_PERF_LEVEL;
-		else
-			req_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
-		VCDRES_MSG_MED("Set initial perf level to %u",
-			req_perf_lvl);
+#ifdef CONFIG_MSM_BUS_SCALING
+	if (!res_trk_update_bus_perf_level(dev_ctxt, req_perf_lvl) < 0) {
+		VCDRES_MSG_ERROR("%s(): update buf perf level failed\n",
+			__func__);
+		return false;
 	}
+
+#endif
+	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0)
+		req_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
 
 	if (req_perf_lvl <= RESTRK_1080P_VGA_PERF_LEVEL) {
 		vidc_freq = vidc_clk_table[0];
@@ -626,37 +611,27 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 		vidc_freq = vidc_clk_table[2];
 		*pn_set_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
 	} else {
-		vidc_freq = vidc_clk_table[4];
+		vidc_freq = vidc_clk_table[3];
 		*pn_set_perf_lvl = RESTRK_1080P_TURBO_PERF_LEVEL;
 	}
-	if (!turbo_supported &&
+
+	if ((!turbo_supported || !dev_ctxt->turbo_mode_set) &&
 		 *pn_set_perf_lvl == RESTRK_1080P_TURBO_PERF_LEVEL) {
+		if (!turbo_supported)
+			VCDRES_MSG_ERROR("Warning: Turbo mode not supported "\
+					" falling back to 1080p clocks\n");
 		vidc_freq = vidc_clk_table[2];
 		*pn_set_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
 	}
 
 	resource_context.perf_level = *pn_set_perf_lvl;
-	VCDRES_MSG_HIGH("VIDC: vidc_freq = %u, req_perf_lvl = %u, "\
-		"set_perf_lvl = %u\n", vidc_freq, req_perf_lvl,
-		(u32)*pn_set_perf_lvl);
-#ifdef CONFIG_MSM_BUS_SCALING
-	if (!res_trk_update_bus_perf_level(dev_ctxt, req_perf_lvl) < 0) {
-		VCDRES_MSG_ERROR("%s(): update buf perf level failed\n",
-			__func__);
-		return false;
-	}
-#endif
+	VCDRES_MSG_MED("VIDC: vidc_freq = %u, req_perf_lvl = %u\n",
+		vidc_freq, req_perf_lvl);
 #ifdef USE_RES_TRACKER
     if (req_perf_lvl != RESTRK_1080P_MIN_PERF_LEVEL) {
 		VCDRES_MSG_MED("%s(): Setting vidc freq to %u\n",
 			__func__, vidc_freq);
 		if (!res_trk_sel_clk_rate(vidc_freq)) {
-			if (vidc_freq == vidc_clk_table[4]) {
-				VCDRES_MSG_MED("%s(): Setting vidc freq "\
-					"to %u\n", __func__, (u32)vidc_clk_table[3]);
-				if (res_trk_sel_clk_rate(vidc_clk_table[3]))
-					goto ret;
-			}
 			VCDRES_MSG_ERROR("%s(): res_trk_sel_clk_rate FAILED\n",
 				__func__);
 			*pn_set_perf_lvl = 0;
@@ -664,7 +639,7 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 		}
 	}
 #endif
-ret:	VCDRES_MSG_MED("%s() set perl level : %d", __func__, *pn_set_perf_lvl);
+	VCDRES_MSG_MED("%s() set perl level : %d", __func__, *pn_set_perf_lvl);
 	return true;
 }
 
@@ -752,9 +727,6 @@ void res_trk_init(struct device *device, u32 irq)
 			resource_context.vidc_platform_data->disable_dmx;
 			resource_context.disable_fullhd =
 			resource_context.vidc_platform_data->disable_fullhd;
-			resource_context.enable_sec_metadata =
-			resource_context.vidc_platform_data->
-				enable_sec_metadata;
 #ifdef CONFIG_MSM_BUS_SCALING
 			resource_context.vidc_bus_client_pdata =
 			resource_context.vidc_platform_data->
@@ -776,7 +748,7 @@ u32 res_trk_get_core_type(void){
 u32 res_trk_get_firmware_addr(struct ddl_buf_addr *firm_addr)
 {
 	int rc = 0;
-	size_t size = 0;
+	size_t size= 0;
 	if (!firm_addr || resource_context.firmware_addr.mapped_buffer) {
 		pr_err("%s() invalid params", __func__);
 		return -EINVAL;
@@ -804,7 +776,7 @@ u32 res_trk_get_firmware_addr(struct ddl_buf_addr *firm_addr)
 		goto fail_map;
 	}
 	memcpy(firm_addr, &resource_context.firmware_addr,
-		sizeof(struct ddl_buf_addr));
+			sizeof(struct ddl_buf_addr));
 	return 0;
 fail_map:
 	res_trk_pmem_free(&resource_context.firmware_addr);
@@ -848,30 +820,17 @@ int res_trk_get_mem_type(void)
 	}
 	if (resource_context.vidc_platform_data->enable_ion) {
 		if (res_trk_check_for_sec_session()) {
-			mem_type = ION_HEAP(mem_type);
-	} else
-		mem_type = (ION_HEAP(mem_type) |
-			ION_HEAP(ION_IOMMU_HEAP_ID));
+         mem_type = ION_HEAP(mem_type);
+         if(resource_context.res_mem_type != DDL_FW_MEM)
+            mem_type |= ION_SECURE;
+         else if (res_trk_is_cp_enabled())
+            mem_type |= ION_SECURE;
+      }
+		else
+			mem_type = (ION_HEAP(mem_type) |
+					ION_HEAP(ION_IOMMU_HEAP_ID));
 	}
-
 	return mem_type;
-}
-
-unsigned int res_trk_get_ion_flags(void)
-{
-	unsigned int flags = 0;
-	if (resource_context.res_mem_type == DDL_FW_MEM)
-		return flags;
-
-	if (resource_context.vidc_platform_data->enable_ion) {
-		if (res_trk_check_for_sec_session()) {
-			if (resource_context.res_mem_type != DDL_FW_MEM)
-				flags |= ION_SECURE;
-			else if (res_trk_is_cp_enabled())
-				flags |= ION_SECURE;
-		}
-	}
-	return flags;
 }
 
 u32 res_trk_is_cp_enabled(void)
@@ -899,10 +858,6 @@ u32 res_trk_get_disable_dmx(void){
 	return resource_context.disable_dmx;
 }
 
-u32 res_trk_get_min_dpb_count(void){
-	return resource_context.vidc_platform_data->cont_mode_dpb_count;
-}
-
 void res_trk_set_mem_type(enum ddl_mem_area mem_type)
 {
 	resource_context.res_mem_type = mem_type;
@@ -912,10 +867,6 @@ void res_trk_set_mem_type(enum ddl_mem_area mem_type)
 u32 res_trk_get_disable_fullhd(void)
 {
 	return resource_context.disable_fullhd;
-}
-u32 res_trk_get_enable_sec_metadata(void)
-{
-	return resource_context.enable_sec_metadata;
 }
 
 int res_trk_enable_iommu_clocks(void)
@@ -935,7 +886,7 @@ int res_trk_enable_iommu_clocks(void)
 			ret = PTR_ERR(vidc_mmu_clks[i].mmu_clk);
 		}
 		if (!ret) {
-			ret = clk_prepare_enable(vidc_mmu_clks[i].mmu_clk);
+			ret = clk_enable(vidc_mmu_clks[i].mmu_clk);
 			if (ret) {
 				clk_put(vidc_mmu_clks[i].mmu_clk);
 				vidc_mmu_clks[i].mmu_clk = NULL;
@@ -943,7 +894,7 @@ int res_trk_enable_iommu_clocks(void)
 		}
 		if (ret) {
 			for (i--; i >= 0; i--) {
-				clk_disable_unprepare(vidc_mmu_clks[i].mmu_clk);
+				clk_disable(vidc_mmu_clks[i].mmu_clk);
 				clk_put(vidc_mmu_clks[i].mmu_clk);
 				vidc_mmu_clks[i].mmu_clk = NULL;
 			}
@@ -964,7 +915,7 @@ int res_trk_disable_iommu_clocks(void)
 	}
 	resource_context.mmu_clks_on = 0;
 	for (i = 0; i < ARRAY_SIZE(vidc_mmu_clks); i++) {
-		clk_disable_unprepare(vidc_mmu_clks[i].mmu_clk);
+		clk_disable(vidc_mmu_clks[i].mmu_clk);
 		clk_put(vidc_mmu_clks[i].mmu_clk);
 		vidc_mmu_clks[i].mmu_clk = NULL;
 	}
@@ -987,54 +938,23 @@ void res_trk_secure_set(void)
 
 int res_trk_open_secure_session()
 {
-	int rc, memtype;
-	if (!res_trk_check_for_sec_session()) {
-		pr_err("Secure sessions are not active\n");
-		return -EINVAL;
-	}
-	mutex_lock(&resource_context.secure_lock);
-	if (!resource_context.sec_clk_heap) {
+	int rc;
+
+	if (res_trk_check_for_sec_session() == 1) {
+		mutex_lock(&resource_context.secure_lock);
 		pr_err("Securing...\n");
 		rc = res_trk_enable_iommu_clocks();
 		if (rc) {
 			pr_err("IOMMU clock enabled failed while open");
 			goto error_open;
 		}
-		memtype = ION_HEAP(resource_context.memtype);
-		rc = msm_ion_secure_heap(memtype);
-		if (rc) {
-			pr_err("ION heap secure failed heap id %d rc %d\n",
-				   resource_context.memtype, rc);
-			goto disable_iommu_clks;
-		}
-		memtype = ION_HEAP(resource_context.cmd_mem_type);
-		rc = msm_ion_secure_heap(memtype);
-		if (rc) {
-			pr_err("ION heap secure failed heap id %d rc %d\n",
-				   resource_context.cmd_mem_type, rc);
-			goto unsecure_memtype_heap;
-		}
-		if (resource_context.vidc_platform_data->secure_wb_heap) {
-			memtype = ION_HEAP(ION_CP_WB_HEAP_ID);
-			rc = msm_ion_secure_heap(memtype);
-			if (rc) {
-				pr_err("WB_HEAP_ID secure failed rc %d\n", rc);
-				goto unsecure_cmd_heap;
-			}
-		}
-		resource_context.sec_clk_heap = 1;
+		msm_ion_secure_heap(ION_HEAP(resource_context.memtype));
+		msm_ion_secure_heap(ION_HEAP(resource_context.cmd_mem_type));
 		res_trk_disable_iommu_clocks();
+		mutex_unlock(&resource_context.secure_lock);
 	}
-	mutex_unlock(&resource_context.secure_lock);
 	return 0;
-unsecure_cmd_heap:
-	msm_ion_unsecure_heap(ION_HEAP(resource_context.cmd_mem_type));
-unsecure_memtype_heap:
-	msm_ion_unsecure_heap(ION_HEAP(resource_context.memtype));
-disable_iommu_clks:
-	res_trk_disable_iommu_clocks();
 error_open:
-	resource_context.sec_clk_heap = 0;
 	mutex_unlock(&resource_context.secure_lock);
 	return rc;
 }
@@ -1042,23 +962,17 @@ error_open:
 int res_trk_close_secure_session()
 {
 	int rc;
-	if (res_trk_check_for_sec_session() == 1 &&
-		resource_context.sec_clk_heap) {
+	if (res_trk_check_for_sec_session() == 1) {
 		pr_err("Unsecuring....\n");
 		mutex_lock(&resource_context.secure_lock);
 		rc = res_trk_enable_iommu_clocks();
 		if (rc) {
-			pr_err("IOMMU clock enabled failed while close\n");
+			pr_err("IOMMU clock enabled failed while close");
 			goto error_close;
 		}
 		msm_ion_unsecure_heap(ION_HEAP(resource_context.cmd_mem_type));
 		msm_ion_unsecure_heap(ION_HEAP(resource_context.memtype));
-
-		if (resource_context.vidc_platform_data->secure_wb_heap)
-			msm_ion_unsecure_heap(ION_HEAP(ION_CP_WB_HEAP_ID));
-
 		res_trk_disable_iommu_clocks();
-		resource_context.sec_clk_heap = 0;
 		mutex_unlock(&resource_context.secure_lock);
 	}
 	return 0;
@@ -1087,29 +1001,5 @@ u32 get_res_trk_perf_level(enum vcd_perf_level perf_level)
 		VCD_MSG_ERROR("Invalid perf level: %d\n", perf_level);
 		res_trk_perf_level = -EINVAL;
 	}
-	VCDRES_MSG_MED("%s: res_trk_perf_level = %u", __func__,
-		res_trk_perf_level);
 	return res_trk_perf_level;
-}
-
-u32 res_trk_estimate_perf_level(u32 pn_perf_lvl)
-{
-	bool turbo_supported =
-		!resource_context.vidc_platform_data->disable_turbo;
-
-	VCDRES_MSG_MED("%s(): pn_perf_lvl = %d, turbo support = %d",
-		__func__, pn_perf_lvl, turbo_supported);
-	if ((pn_perf_lvl >= RESTRK_1080P_VGA_PERF_LEVEL) &&
-		(pn_perf_lvl < RESTRK_1080P_720P_PERF_LEVEL)) {
-		return RESTRK_1080P_720P_PERF_LEVEL;
-	} else if ((pn_perf_lvl >= RESTRK_1080P_720P_PERF_LEVEL) &&
-			(pn_perf_lvl < RESTRK_1080P_MAX_PERF_LEVEL)) {
-		return RESTRK_1080P_MAX_PERF_LEVEL;
-	} else if ((pn_perf_lvl >= RESTRK_1080P_MAX_PERF_LEVEL) &&
-			(pn_perf_lvl < RESTRK_1080P_TURBO_PERF_LEVEL) &&
-			turbo_supported) {
-		return RESTRK_1080P_TURBO_PERF_LEVEL;
-	} else {
-		return pn_perf_lvl;
-	}
 }

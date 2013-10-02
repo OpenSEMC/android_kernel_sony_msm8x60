@@ -29,7 +29,6 @@ u32 res_trk_download_firmware(void);
 u32 res_trk_get_core_type(void);
 u32 res_trk_get_mem_type(void);
 u32 res_trk_get_disable_fullhd(void);
-u32 res_trk_get_ion_flags(void);
 u32 res_trk_get_enable_ion(void);
 u32 res_trk_is_cp_enabled(void);
 struct ion_client *res_trk_get_ion_client(void);
@@ -40,5 +39,4 @@ int res_trk_close_secure_session(void);
 void res_trk_secure_set(void);
 void res_trk_secure_unset(void);
 u32 get_res_trk_perf_level(enum vcd_perf_level perf_level);
-u32 res_trk_estimate_perf_level(u32 pn_perf_lvl);
 #endif
