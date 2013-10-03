@@ -28,7 +28,7 @@
 #include <linux/file.h>
 #include <linux/major.h>
 #include <linux/regulator/consumer.h>
-#include <linux/msm_ion.h>
+#include <linux/ion.h>
 #include <linux/sync.h>
 #include <linux/sw_sync.h>
 
@@ -210,8 +210,6 @@ struct msm_rotator_dev {
 	#ifdef CONFIG_MSM_BUS_SCALING
 	uint32_t bus_client_handle;
 	#endif
-	u32 sec_mapped;
-	u32 mmu_clk_on;
 	struct rot_sync_info sync_info[MAX_SESSIONS];
 	/* non blocking */
 	struct mutex commit_mutex;
@@ -378,8 +376,9 @@ void rotator_free_2pass_buf(struct rot_buf_type *rot_buf, int s_ndx)
 
 int msm_rotator_iommu_map_buf(int mem_id, int domain,
 	unsigned long *start, unsigned long *len,
-	struct ion_handle **pihdl, unsigned int secure)
+	struct ion_handle **pihdl)
 {
+	int domain;
 	if (!msm_rotator_dev->client)
 		return -EINVAL;
 
@@ -388,32 +387,19 @@ int msm_rotator_iommu_map_buf(int mem_id, int domain,
 		pr_err("ion_import_dma_buf() failed\n");
 		return PTR_ERR(*pihdl);
 	}
+
+	if (rot_iommu_split_domain)
+	  domain = src ? ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN;
+	else
+	  domain = ROTATOR_SRC_DOMAIN;
+
 	pr_debug("%s(): ion_hdl %p, ion_fd %d\n", __func__, *pihdl, mem_id);
 
-	if (rot_iommu_split_domain) {
-		if (secure) {
-			if (ion_phys(msm_rotator_dev->client,
-				*pihdl, start, (unsigned *)len)) {
-				pr_err("%s:%d: ion_phys map failed\n",
-					 __func__, __LINE__);
-				return -ENOMEM;
-			}
-		} else {
-			if (ion_map_iommu(msm_rotator_dev->client,
-				*pihdl,	domain, GEN_POOL,
-				SZ_4K, 0, start, len, 0,
-				ION_IOMMU_UNMAP_DELAYED)) {
-				pr_err("ion_map_iommu() failed\n");
-				return -EINVAL;
-			}
-		}
-	} else {
-		if (ion_map_iommu(msm_rotator_dev->client,
-			*pihdl,	ROTATOR_SRC_DOMAIN, GEN_POOL,
-			SZ_4K, 0, start, len, 0, ION_IOMMU_UNMAP_DELAYED)) {
-			pr_err("ion_map_iommu() failed\n");
-			return -EINVAL;
-		}
+	if (ion_map_iommu(msm_rotator_dev->client,
+		*pihdl,	domain, GEN_POOL,
+		SZ_4K, 0, start, len, 0, ION_IOMMU_UNMAP_DELAYED)) {
+		pr_err("ion_map_iommu() failed\n");
+		return -EINVAL;
 	}
 
 	pr_debug("%s(): mem_id %d, start 0x%lx, len 0x%lx\n",
@@ -1634,7 +1620,7 @@ static int msm_rotator_rgb_types(struct msm_rotator_img_info *info,
 
 static int get_img(struct msmfb_data *fbd, int domain,
 	unsigned long *start, unsigned long *len, struct file **p_file,
-	int *p_need, struct ion_handle **p_ihdl, unsigned int secure)
+	int *p_need, struct ion_handle **p_ihdl)
 {
 	int ret = 0;
 #ifdef CONFIG_FB
@@ -1781,7 +1767,7 @@ static int msm_rotator_rotate_prepare(
 
 	rc = get_img(&info.src, ROTATOR_SRC_DOMAIN, (unsigned long *)&in_paddr,
 			(unsigned long *)&src_len, &srcp0_file, &ps0_need,
-			&srcp0_ihdl, 0);
+			&srcp0_ihdl);
 	if (rc) {
 		pr_err("%s: in get_img() failed id=0x%08x\n",
 			DRIVER_NAME, info.src.memory_id);
@@ -1790,7 +1776,7 @@ static int msm_rotator_rotate_prepare(
 
 	rc = get_img(&info.dst, ROTATOR_DST_DOMAIN, (unsigned long *)&out_paddr,
 			(unsigned long *)&dst_len, &dstp0_file, &p_need,
-			&dstp0_ihdl, img_info->secure);
+			&dstp0_ihdl);
 	if (rc) {
 		pr_err("%s: out get_img() failed id=0x%08x\n",
 		       DRIVER_NAME, info.dst.memory_id);
@@ -1821,7 +1807,7 @@ static int msm_rotator_rotate_prepare(
 		rc = get_img(&info.src_chroma, ROTATOR_SRC_DOMAIN,
 				(unsigned long *)&in_chroma_paddr,
 				(unsigned long *)&src_len, &srcp1_file, &p_need,
-				&srcp1_ihdl, 0);
+				&srcp1_ihdl);
 		if (rc) {
 			pr_err("%s: in chroma get_img() failed id=0x%08x\n",
 				DRIVER_NAME, info.src_chroma.memory_id);
@@ -1831,7 +1817,7 @@ static int msm_rotator_rotate_prepare(
 		rc = get_img(&info.dst_chroma, ROTATOR_DST_DOMAIN,
 				(unsigned long *)&out_chroma_paddr,
 				(unsigned long *)&dst_len, &dstp1_file, &p_need,
-				&dstp1_ihdl, img_info->secure);
+				&dstp1_ihdl);
 		if (rc) {
 			pr_err("%s: out chroma get_img() failed id=0x%08x\n",
 				DRIVER_NAME, info.dst_chroma.memory_id);
@@ -2247,87 +2233,6 @@ static void msm_rotator_set_perf_level(u32 wh, u32 is_rgb)
 
 }
 
-static int rot_enable_iommu_clocks(struct msm_rotator_dev *rot_dev)
-{
-	int ret = 0, i;
-	if (rot_dev->mmu_clk_on)
-		return 0;
-	for (i = 0; i < ARRAY_SIZE(rot_mmu_clks); i++) {
-		rot_mmu_clks[i].mmu_clk = clk_get(&msm_rotator_dev->pdev->dev,
-			rot_mmu_clks[i].mmu_clk_name);
-		if (IS_ERR(rot_mmu_clks[i].mmu_clk)) {
-			pr_err(" %s: Get failed for clk %s", __func__,
-				   rot_mmu_clks[i].mmu_clk_name);
-			ret = PTR_ERR(rot_mmu_clks[i].mmu_clk);
-			break;
-		}
-		ret = clk_prepare_enable(rot_mmu_clks[i].mmu_clk);
-		if (ret) {
-			clk_put(rot_mmu_clks[i].mmu_clk);
-			rot_mmu_clks[i].mmu_clk = NULL;
-		}
-	}
-	if (ret) {
-		for (i--; i >= 0; i--) {
-			clk_disable_unprepare(rot_mmu_clks[i].mmu_clk);
-			clk_put(rot_mmu_clks[i].mmu_clk);
-			rot_mmu_clks[i].mmu_clk = NULL;
-		}
-	} else {
-		rot_dev->mmu_clk_on = 1;
-	}
-	return ret;
-}
-
-static int rot_disable_iommu_clocks(struct msm_rotator_dev *rot_dev)
-{
-	int i;
-	if (!rot_dev->mmu_clk_on)
-		return 0;
-	for (i = 0; i < ARRAY_SIZE(rot_mmu_clks); i++) {
-		clk_disable_unprepare(rot_mmu_clks[i].mmu_clk);
-		clk_put(rot_mmu_clks[i].mmu_clk);
-		rot_mmu_clks[i].mmu_clk = NULL;
-	}
-	rot_dev->mmu_clk_on = 0;
-	return 0;
-}
-
-static int map_sec_resource(struct msm_rotator_dev *rot_dev)
-{
-	int ret = 0;
-	if (rot_dev->sec_mapped)
-		return 0;
-
-	ret = rot_enable_iommu_clocks(rot_dev);
-	if (ret) {
-		pr_err("IOMMU clock enabled failed while open");
-		return ret;
-	}
-	ret = msm_ion_secure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
-	if (ret)
-		pr_err("ION heap secure failed heap id %d ret %d\n",
-			   ION_CP_MM_HEAP_ID, ret);
-	else
-		rot_dev->sec_mapped = 1;
-	rot_disable_iommu_clocks(rot_dev);
-	return ret;
-}
-
-static int unmap_sec_resource(struct msm_rotator_dev *rot_dev)
-{
-	int ret = 0;
-	ret = rot_enable_iommu_clocks(rot_dev);
-	if (ret) {
-		pr_err("IOMMU clock enabled failed while close\n");
-		return ret;
-	}
-	msm_ion_unsecure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
-	rot_dev->sec_mapped = 0;
-	rot_disable_iommu_clocks(rot_dev);
-	return ret;
-}
-
 static int msm_rotator_start(unsigned long arg,
 			     struct msm_rotator_fd_info *fd_info)
 {
@@ -2539,8 +2444,6 @@ static int msm_rotator_start(unsigned long arg,
 
 	if (rc == 0 && copy_to_user((void __user *)arg, &info, sizeof(info)))
 		rc = -EFAULT;
-	if ((rc == 0) && (info.secure))
-		map_sec_resource(msm_rotator_dev);
 
 	sync_info = &msm_rotator_dev->sync_info[s];
 	if ((rc == 0) && (sync_info->initialized == false)) {
@@ -2603,8 +2506,6 @@ static int msm_rotator_finish(unsigned long arg)
 	msm_bus_scale_client_update_request(msm_rotator_dev->bus_client_handle,
 		0);
 #endif
-	if (msm_rotator_dev->sec_mapped)
-		unmap_sec_resource(msm_rotator_dev);
 	mutex_unlock(&msm_rotator_dev->rotator_lock);
 	return rc;
 }

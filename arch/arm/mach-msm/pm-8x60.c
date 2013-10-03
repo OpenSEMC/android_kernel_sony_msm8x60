@@ -1027,7 +1027,8 @@ static int msm_pm_enter(suspend_state_t state)
 
 		clock_debug_print_enabled();
 
-		power_debug_collapse();
+		//FIXME!!
+		//power_debug_collapse();
 
 #ifdef CONFIG_MSM_SLEEP_TIME_OVERRIDE
 		if (msm_pm_sleep_time_override > 0) {

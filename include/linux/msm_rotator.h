@@ -30,12 +30,6 @@ struct msm_rotator_buf_sync {
 	int rel_fen_fd;
 };
 
-struct rot_buf_type {
-	struct ion_handle *ihdl;
-	uint32_t write_addr;
-	uint32_t read_addr;
-};
-
 struct msm_rotator_img_info {
 	unsigned int session_id;
 	struct msmfb_img  src;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,10 +14,12 @@
 #include <linux/slab.h>
 #include <media/msm_vidc.h>
 #include "msm_vidc_internal.h"
+#include "msm_vidc_debug.h"
 #include "msm_vdec.h"
 #include "msm_venc.h"
 #include "msm_vidc_common.h"
 #include "msm_smem.h"
+#include <linux/delay.h>
 
 int msm_vidc_poll(void *instance, struct file *filp,
 		struct poll_table_struct *wait)
@@ -215,7 +217,7 @@ static inline int vb2_bufq_init(struct msm_vidc_inst *inst,
 	} else if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		q = &inst->vb2_bufq[OUTPUT_PORT];
 	} else {
-		pr_err("buf_type = %d not recognised\n", type);
+		dprintk(VIDC_ERR, "buf_type = %d not recognised\n", type);
 		return -EINVAL;
 	}
 	q->type = type;
@@ -239,13 +241,14 @@ int msm_vidc_open(void *vidc_inst, int core_id, int session_type)
 	int i = 0;
 	if (core_id >= MSM_VIDC_CORES_MAX ||
 			session_type >= MSM_VIDC_MAX_DEVICES) {
-		pr_err("Invalid input, core_id = %d, session = %d\n",
+		dprintk(VIDC_ERR, "Invalid input, core_id = %d, session = %d\n",
 			core_id, session_type);
 		goto err_invalid_core;
 	}
 	core = get_vidc_core(core_id);
 	if (!core) {
-		pr_err("Failed to find core for core_id = %d\n", core_id);
+		dprintk(VIDC_ERR,
+			"Failed to find core for core_id = %d\n", core_id);
 		goto err_invalid_core;
 	}
 
@@ -263,7 +266,7 @@ int msm_vidc_open(void *vidc_inst, int core_id, int session_type)
 	}
 	inst->mem_client = msm_smem_new_client(SMEM_ION);
 	if (!inst->mem_client) {
-		pr_err("Failed to create memory client\n");
+		dprintk(VIDC_ERR, "Failed to create memory client\n");
 		goto fail_mem_client;
 	}
 	if (session_type == MSM_VIDC_DECODER) {
@@ -276,20 +279,25 @@ int msm_vidc_open(void *vidc_inst, int core_id, int session_type)
 	rc = vb2_bufq_init(inst, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
 			session_type);
 	if (rc) {
-		pr_err("Failed to initialize vb2 queue on capture port\n");
+		dprintk(VIDC_ERR,
+			"Failed to initialize vb2 queue on capture port\n");
 		goto fail_init;
 	}
 	rc = vb2_bufq_init(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
 			session_type);
 	if (rc) {
-		pr_err("Failed to initialize vb2 queue on capture port\n");
+		dprintk(VIDC_ERR,
+			"Failed to initialize vb2 queue on capture port\n");
 		goto fail_init;
 	}
 	rc = msm_comm_try_state(inst, MSM_VIDC_CORE_INIT);
 	if (rc) {
-		pr_err("Failed to move video instance to init state\n");
+		dprintk(VIDC_ERR,
+			"Failed to move video instance to init state\n");
 		goto fail_init;
 	}
+	inst->debugfs_root =
+		msm_vidc_debugfs_init_inst(inst, core->debugfs_root);
 	spin_lock_irqsave(&core->lock, flags);
 	list_add_tail(&inst->list, &core->instances);
 	spin_unlock_irqrestore(&core->lock, flags);
@@ -341,6 +349,7 @@ static void cleanup_instance(struct msm_vidc_inst *inst)
 			msm_smem_free(inst->mem_client, inst->extradata_handle);
 		spin_unlock_irqrestore(&inst->lock, flags);
 		msm_smem_delete_client(inst->mem_client);
+		debugfs_remove_recursive(inst->debugfs_root);
 	}
 }
 
@@ -361,8 +370,9 @@ int msm_vidc_close(void *instance)
 	mutex_unlock(&core->sync_lock);
 	rc = msm_comm_try_state(inst, MSM_VIDC_CORE_UNINIT);
 	if (rc)
-		pr_err("Failed to move video instance to uninit state\n");
+		dprintk(VIDC_ERR,
+			"Failed to move video instance to uninit state\n");
 	cleanup_instance(inst);
-	pr_debug("Closed the instance\n");
+	dprintk(VIDC_DBG, "Closed the instance\n");
 	return 0;
 }
