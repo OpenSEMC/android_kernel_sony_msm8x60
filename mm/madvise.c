@@ -11,7 +11,6 @@
 #include <linux/mempolicy.h>
 #include <linux/page-isolation.h>
 #include <linux/hugetlb.h>
-#include <linux/falloc.h>
 #include <linux/sched.h>
 #include <linux/ksm.h>
 #include <linux/file.h>
@@ -202,7 +201,8 @@ static long madvise_remove(struct vm_area_struct *vma,
 				struct vm_area_struct **prev,
 				unsigned long start, unsigned long end)
 {
-	loff_t offset;
+	struct address_space *mapping;
+	loff_t offset, endoff;
 	int error;
 	struct file *f;
 
@@ -220,7 +220,11 @@ static long madvise_remove(struct vm_area_struct *vma,
 	if ((vma->vm_flags & (VM_SHARED|VM_WRITE)) != (VM_SHARED|VM_WRITE))
 		return -EACCES;
 
+	mapping = vma->vm_file->f_mapping;
+
 	offset = (loff_t)(start - vma->vm_start)
+			+ ((loff_t)vma->vm_pgoff << PAGE_SHIFT);
+	endoff = (loff_t)(end - vma->vm_start - 1)
 			+ ((loff_t)vma->vm_pgoff << PAGE_SHIFT);
 
 	/*
