@@ -31,6 +31,7 @@
 #include "msm_fb.h"
 #include "hdmi_msm.h"
 #include "mdp4.h"
+#include "hdmi_msm.h"
 
 #define DTV_BASE	0xD0000
 
@@ -622,6 +623,14 @@ int mdp4_dtv_on(struct platform_device *pdev)
 	vctrl->dev = mfd->fbi->dev;
 	vctrl->vsync_irq_enabled = 0;
 
+#if defined(CONFIG_VIDEO_MHL_V1) || defined(CONFIG_VIDEO_MHL_V2) || \
+		defined(CONFIG_VIDEO_MHL_TAB_V2)
+	if (!hdmi_msm_state->hpd_on_offline) {
+		pr_info("hdmi_online is not\n");
+		return -ENODEV;
+	}
+#endif
+
 	mdp_footswitch_ctrl(TRUE);
 	/* Mdp clock enable */
 	mdp_clk_ctrl(1);
@@ -672,6 +681,14 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	struct mdp4_overlay_pipe *pipe;
 	struct vsync_update *vp;
 	int mixer = 0;
+
+#if defined(CONFIG_VIDEO_MHL_V1) || defined(CONFIG_VIDEO_MHL_V2) || \
+		defined(CONFIG_VIDEO_MHL_TAB_V2)
+	if (hdmi_msm_state->hpd_on_offline) {
+		pr_info("hpd_offline is not\n");
+		return -ENODEV;
+	}
+#endif
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 

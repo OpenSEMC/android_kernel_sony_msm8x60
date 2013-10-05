@@ -407,6 +407,10 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	bf_supported = mdp4_overlay_borderfill_supported();
 
+	/* don't move below */
+	if (mfd->vsync_init != NULL)
+		mfd->vsync_init(0);
+
 	rc = msm_fb_register(mfd);
 	if (rc)
 		return rc;
@@ -1079,7 +1083,7 @@ static void msm_fb_imageblit(struct fb_info *info, const struct fb_image *image)
 static int msm_fb_blank(int blank_mode, struct fb_info *info)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-	//int ret;
+	int ret;
 
 	if (blank_mode == FB_BLANK_POWERDOWN) {
 		struct fb_event event;
@@ -3260,12 +3264,10 @@ static int msmfb_overlay_play_wait(struct fb_info *info, unsigned long *argp)
 	return ret;
 }
 
-/*
 static int msmfb_overlay_commit(struct fb_info *info)
 {
 	return mdp4_overlay_commit(info);
 }
-*/
 
 static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 {

@@ -126,6 +126,10 @@ config FB_MSM_OVERLAY
 	bool "MDP4 overlay support"
 	default n
 
+config FB_MSM_MDP_ADDITIONAL_BUS_SCALING
+	bool "MDP4 additional bus scaling"
+	default n
+
 config FB_MSM_DTV
 	depends on FB_MSM_OVERLAY
 	bool
@@ -222,6 +226,41 @@ config FB_MSM_MIPI_DSI_TC358764_DSI2LVDS
 	  and up to WUXGA 1920x1200 18-bit
 	  using a dual LVDS link.
 
+config FB_MSM_MIPI_DSI_S6D6AA0_WXGA
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_S6E8AA0_HD720
+	bool
+	select FB_MSM_MIPI_DSI
+	select FB_MSM_MIPI_DSI_ESD_REFRESH
+	select FB_MSM_MDP_ADDITIONAL_BUS_SCALING
+	default n
+
+config FB_MSM_MIPI_DSI_S6E8AA0_WXGA
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_S6E8AA0_WXGA_Q1
+	bool
+	select FB_MSM_MIPI_DSI
+	select FB_MSM_MIPI_DSI_ESD_REFRESH
+	select FB_MSM_MDP_ADDITIONAL_BUS_SCALING
+	default n
+
+config FB_MSM_MIPI_DSI_ESD_REFRESH
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_SAMSUNG
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+
 config FB_MSM_LCDC_ST15_WXGA
     bool
     select FB_MSM_LCDC_PANEL
@@ -233,6 +272,11 @@ config FB_MSM_LCDC_ST15_PANEL
     select FB_MSM_LCDC_ST15_WXGA
     ---help---
       Support for ST1.5 WXGA (1366x768) panel
+
+config FB_MSM_LCDC_LD9040_WVGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
 
 config FB_MSM_LCDC_PRISM_WVGA
 	bool
@@ -273,6 +317,19 @@ config FB_MSM_LCDC_AUO_WVGA
 	bool
 	select FB_MSM_LCDC_PANEL
 	default n
+
+config FB_MSM_LCDC_TRULY_HVGA_IPS3P2335
+        bool
+        select FB_MSM_LCDC_PANEL
+        default n
+
+config FB_MSM_LCDC_TRULY_HVGA_IPS3P2335_PT_PANEL
+        depends on FB_MSM_LCDC_HW
+        bool "LCDC Truly HVGA PT Panel"
+        select FB_MSM_LCDC_TRULY_HVGA_IPS3P2335
+        default n
+        ---help---
+        Support for LCDC Truly HVGA PT panel
 
 config FB_MSM_LCDC_TRULY_HVGA_IPS3P2335
         bool
@@ -366,6 +423,21 @@ config FB_MSM_MIPI_CHIMEI_WXGA
 	  The panel is connected to the host
 	  via Toshiba DSI-to-LVDS bridge.
 
+config FB_MSM_MIPI_S6D6AA0_WXGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_S6D6AA0_WXGA
+	default n
+
+config FB_MSM_MIPI_S6E8AA0_HD720_PT
+	bool
+	select FB_MSM_MIPI_DSI_S6E8AA0_HD720
+	default n
+
+config FB_MSM_MIPI_S6E8AA0_WXGA_Q1_PT
+	bool
+	select FB_MSM_MIPI_DSI_S6E8AA0_WXGA_Q1
+	default n
+
 config FB_MSM_MIPI_CHIMEI_WUXGA
 	bool "LVDS Chimei WUXGA Panel using Toshiba MIPI DSI-to-LVDS bridge."
 	select FB_MSM_MIPI_DSI_TC358764_DSI2LVDS
@@ -374,6 +446,11 @@ config FB_MSM_MIPI_CHIMEI_WUXGA
 	  The panel is using a serial LVDS input.
 	  The panel is connected to the host
 	  via Toshiba DSI-to-LVDS bridge.
+
+config FB_MSM_MIPI_S6E8AA0_HD720_PT
+	bool
+	select FB_MSM_MIPI_DSI_S6E8AA0_HD720
+	default n
 
 config FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT
 	bool
@@ -442,6 +519,20 @@ config FB_MSM_LCDC_CHIMEI_WXGA_PANEL
 	---help---
 	  Support for LCDC Chimei WXGA (1366x768) panel
 
+config FB_MSM_LCDC_LD9040_WVGA_PANEL
+	depends on FB_MSM_LCDC_HW
+	bool "LCDC LD9040 WVGA Panel"
+	select FB_MSM_LCDC_LD9040_WVGA
+	---help---
+	  Support for LCDC LD9040 WVGA (480x800) panel
+
+config FB_MSM_LCDC_S6E63M0_WVGA_PANEL
+    depends on FB_MSM_LCDC_HW
+    bool "LCDC S6B63M0 WVGA Panel"
+    select FB_MSM_LCDC_S6E63M0_WVGA
+    ---help---
+      Support for LCDC S6E63M0 WVGA (480x800) panel
+
 config FB_MSM_LCDC_GORDON_VGA_PANEL
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC Gordon VGA Panel"
@@ -507,6 +598,12 @@ config FB_MSM_LVDS_FRC_FHD_PANEL
 	  FRC(Frame Rate Converter) uses LVDS as input
 	  interface. It is treated as a HDMI panel with
 	  1920x1080 resolution.
+
+config FB_MSM_LVDS_CHIMEI_WXGA_PANEL
+        bool "LVDS Chimei WXGA Panel"
+        select FB_MSM_LVDS_CHIMEI_WXGA
+        ---help---
+          Support for LVDS Chimei WXGA(1366x768) panel
 
 config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	depends on FB_MSM_LCDC_HW
@@ -627,15 +724,6 @@ config FB_MSM_MDDI_SHARP_QVGA_128x128
 	---help---
 	  Support for MDDI Sharp QVGA (240x320) and 128x128 dual panel
 
-config FB_MSM_LVDS_CHIMEI_WXGA
-	bool
-	select FB_MSM_LVDS
-	default n
-
-config FB_MSM_LVDS_FRC_FHD
-	bool
-	select FB_MSM_LVDS
-	default n
 
 config FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT_PANEL
 	bool "MIPI Toshiba WVGA PT Panel"
@@ -676,6 +764,18 @@ config FB_MSM_MIPI_RENESAS_CMD_FWVGA_PT_PANEL
 config FB_MSM_MIPI_CHIMEI_WXGA_PANEL
 	bool "MIPI Chimei WXGA PT Panel"
 	select FB_MSM_MIPI_CHIMEI_WXGA
+
+config FB_MSM_MIPI_S6D6AA0_WXGA_PANEL
+	bool "MIPI S6D6AA0_WXGA Panel"
+	select FB_MSM_MIPI_S6D6AA0_WXGA_PT
+
+config FB_MSM_MIPI_S6E8AA0_HD720_PANEL
+	bool "MIPI S6E8AA0_HD720 Panel"
+	select FB_MSM_MIPI_S6E8AA0_HD720_PT
+	
+config FB_MSM_MIPI_S6E8AA0_WXGA_Q1_PANEL
+	bool "MIPI S6E8AA0)WXGA_Q1 Panel"
+	select FB_MSM_MIPI_S6E8AA0_WXGA_Q1_PT
 
 config FB_MSM_MIPI_CHIMEI_WUXGA_PANEL
 	bool "MIPI Chimei WUXGA Panel"
@@ -819,6 +919,16 @@ config FB_MSM_HDMI_3D
 	bool
 	default n
 
+config S6E63M0_EARLY_SUSPEND
+    depends on FB_MSM_LCDC_S6E63M0_WVGA_PANEL
+    bool "Enable S6E63M0 early_suspend and late_resume logic"
+    default n
+    ---help---
+    Use the S6E63M0 early_suspend and late_resume logic.
+    This is probably handled by the system board, so shouldn't be necessary.
+
+    If unsure, say 'n'.
+
 config FB_MSM_HDMI_ADV7520_PANEL
 	depends on FB_MSM_MDP40 && FB_MSM_OVERLAY
         bool "LCDC HDMI ADV7520 720p Panel"
@@ -900,7 +1010,7 @@ config FB_MSM_HDMI_MHL_8334
 config FB_MSM_HDMI_MHL
 	depends on FB_MSM_HDMI_MSM_PANEL
 	bool 'HDMI to MHL support'
-	default n
+	default y
 	---help---
 	  Support the HDMI to MHL conversion.
 	  MHL (Mobile High-Definition Link) technology

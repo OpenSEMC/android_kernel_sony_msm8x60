@@ -436,7 +436,9 @@ void mdp4_overlay_dmae_cfg(struct msm_fb_data_type *mfd, int atv)
 		MDP_OUTP(MDP_BASE + 0xb3014, 0x1000080);
 		MDP_OUTP(MDP_BASE + 0xb4004, 0x67686970);
 	} else {
+#ifdef CONFIG_FB_MSM_EXT_INTERFACE_COMMON
 		mdp_vid_quant_set();
+#endif
 		MDP_OUTP(MDP_BASE + 0xb0070, 0xff0000);
 		MDP_OUTP(MDP_BASE + 0xb0074, 0xff0000);
 		MDP_OUTP(MDP_BASE + 0xb0078, 0xff0000);
@@ -1871,7 +1873,7 @@ void mdp4_mixer_stage_down(struct mdp4_overlay_pipe *pipe, int commit)
 			ctrl->stage[mixer][i] = NULL;  /* clear it */
 	}
 
-	if (commit || (mixer > 0 && !hdmi_prim_display))
+	if (commit)
 		mdp4_mixer_stage_commit(mixer);
 }
 /*
@@ -2228,9 +2230,11 @@ void mdp4_mixer_blend_setup(int mixer)
 		alpha_drop = 0;	/* per stage */
 		/* alpha channel is lost on VG pipe when using QSEED or M/N */
 		if (s_pipe->pipe_type == OVERLAY_TYPE_VIDEO &&
+			s_pipe->alpha_enable && // QC
 			((s_pipe->op_mode & MDP4_OP_SCALEY_EN) ||
 			(s_pipe->op_mode & MDP4_OP_SCALEX_EN)) &&
-			!(s_pipe->op_mode & MDP4_OP_SCALEY_PIXEL_RPT))
+			!(s_pipe->op_mode &
+			 (MDP4_OP_SCALEX_PIXEL_RPT | MDP4_OP_SCALEY_PIXEL_RPT)))
 			alpha_drop = 1;
 
 		d_pipe = mdp4_background_layer(mixer, s_pipe);
@@ -2555,6 +2559,19 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 		return -ERANGE;
 	}
 
+	if (mdp_rev <= MDP_REV_41) {
+		if(mfd->panel_info.type != DTV_PANEL){
+			if ((mdp4_overlay_format2type(req->src.format) == OVERLAY_TYPE_RGB) &&
+				!(req->flags & MDP_OV_PIPE_SHARE) &&
+				((req->src_rect.w > req->dst_rect.w) ||
+				(req->src_rect.h > req->dst_rect.h))) {
+					mdp4_stat.err_size++;
+					pr_err("%s: downscale on RGB pipe!\n", __func__);
+					return -EINVAL;
+			}
+		}
+	}
+
 	if (mdp_hw_revision == MDP4_REVISION_V1) {
 		/*  non integer down saceling ratio  smaller than 1/4
 		 *  is not supportted
@@ -2711,6 +2728,15 @@ static int mdp4_calc_req_mdp_clk(struct msm_fb_data_type *mfd,
 		mfd->panel_info.type == MIPI_CMD_PANEL) ?
 		mfd->panel_info.mipi.dsi_pclk_rate :
 		mfd->panel_info.clk_rate;
+
+#if defined (CONFIG_KOR_MODEL_SHV_E110S)
+	/* change minimum pclk to boost mdp clk
+	    when playing 1080p video clip in WVGA lcd density */
+	if (pclk < 34910000) {
+		pclk = 34910000;
+	}
+#endif
+
 	if (!pclk) {
 		pr_err("%s panel pixel clk is zero!\n", __func__);
 		return mdp_max_clk;
@@ -2851,9 +2877,7 @@ static int mdp4_calc_req_blt(struct msm_fb_data_type *mfd,
 		 req->src_rect.w, req->dst_rect.w);
 
 	if (clk > mdp_max_clk * 2) {
-		/* FIXME!!
 		pr_err("%s: blt required, clk=%d max=%d", clk, mdp_max_clk * 2);
-		*/		
 		ret = -EINVAL;
 	}
 
@@ -3042,7 +3066,7 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd)
 	u32 worst_mdp_clk = 0;
 	int i;
 	struct mdp4_overlay_perf *perf_req = &perf_request;
-	//struct mdp4_overlay_perf *perf_cur = &perf_current;
+	struct mdp4_overlay_perf *perf_cur = &perf_current;
 	struct mdp4_overlay_pipe *pipe;
 	u32 cnt = 0;
 	int ret = -EINVAL;

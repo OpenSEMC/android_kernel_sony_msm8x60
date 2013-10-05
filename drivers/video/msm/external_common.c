@@ -1346,6 +1346,11 @@ static void hdmi_edid_detail_desc(const uint8 *data_buf, uint32 *disp_mode)
 		DEV_INFO("%s: *no mode* found\n", __func__);
 }
 
+bool mhl_is_connected(void)
+{
+	return false;
+}
+
 static void add_supported_video_format(
 	struct hdmi_disp_mode_list_type *disp_mode_list,
 	uint32 video_format)
