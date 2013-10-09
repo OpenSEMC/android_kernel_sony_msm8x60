@@ -4093,15 +4093,14 @@ static struct msm_iommu_ctx msm_iommu_split_ctx_names[] = {
 	},
 };
 
-static int iommu_enabled;
-
 void mdp4_iommu_attach(void)
 {
+	static int done;
 	struct msm_iommu_ctx *ctx_names;
 	struct iommu_domain *domain;
 	int i, arr_size;
 
-	if (!iommu_enabled) {
+	if (!done) {
 		if (mdp_iommu_split_domain) {
 			ctx_names = msm_iommu_split_ctx_names;
 			arr_size = ARRAY_SIZE(msm_iommu_split_ctx_names);
@@ -4132,47 +4131,7 @@ void mdp4_iommu_attach(void)
 				continue;
 			}
 		}
-		pr_debug("Attached MDP IOMMU device\n");
-		iommu_enabled = 1;
-	}
-}
-
-void mdp4_iommu_detach(void)
-{
-	struct msm_iommu_ctx *ctx_names;
-	struct iommu_domain *domain;
-	int i, arr_size;
-
-	if (!mdp_check_suspended() || mdp4_extn_disp)
-		return;
-
-	if (iommu_enabled) {
-		if (mdp_iommu_split_domain) {
-			ctx_names = msm_iommu_split_ctx_names;
-			arr_size = ARRAY_SIZE(msm_iommu_split_ctx_names);
-		} else {
-			ctx_names = msm_iommu_ctx_names;
-			arr_size = ARRAY_SIZE(msm_iommu_ctx_names);
-		}
-
-		for (i = 0; i < arr_size; i++) {
-			int domain_idx;
-			struct device *ctx = msm_iommu_get_ctx(
-				ctx_names[i].name);
-
-			if (!ctx)
-				continue;
-
-			domain_idx = ctx_names[i].domain;
-
-			domain = msm_get_iommu_domain(domain_idx);
-			if (!domain)
-				continue;
-
-			iommu_detach_device(domain,	ctx);
-		}
-		pr_debug("Detached MDP IOMMU device\n");
-		iommu_enabled = 0;
+		done = 1;
 	}
 }
 
