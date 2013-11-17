@@ -1502,9 +1502,9 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		}
 
 	fbi->screen_base = fbram;
-	fbi->fix.smem_start = (unsigned long)fbram_phys;
+        fbi->fix.smem_start = (unsigned long)fbram_phys;
 
-	if (fbi->fix.smem_start) {
+        if (fbi->fix.smem_start) {
                 mfd->map_buffer = msm_subsystem_map_buffer(
                         fbi->fix.smem_start, fbi->fix.smem_len,
                         flags, subsys_id, 2);
@@ -1516,62 +1516,52 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
                 }
         }
 
-	if (!bf_supported || mfd->index == 0)
-		memset(fbi->screen_base, 0x0, fix->smem_len);
+        if ((!bf_supported || mfd->index == 0) && fbi->screen_base)
+                memset(fbi->screen_base, 0x0, fix->smem_len);
 
-	mfd->op_enable = TRUE;
-	mfd->panel_power_on = FALSE;
+        mfd->op_enable = TRUE;
+        mfd->panel_power_on = FALSE;
 
-	/* cursor memory allocation */
-	if (mfd->cursor_update) {
-		unsigned long cursor_buf_iommu = 0;
-		mfd->cursor_buf = dma_alloc_coherent(NULL,
-					MDP_CURSOR_SIZE,
-					(dma_addr_t *) &mfd->cursor_buf_phys,
-					GFP_KERNEL);
+        /* cursor memory allocation */
+        if (mfd->cursor_update) {
+                mfd->cursor_buf = dma_alloc_coherent(NULL,
+                                        MDP_CURSOR_SIZE,
+                                        (dma_addr_t *) &mfd->cursor_buf_phys,
+                                        GFP_KERNEL);
+                if (!mfd->cursor_buf)
+                        mfd->cursor_update = 0;
+        }
 
-		msm_iommu_map_contig_buffer((unsigned long)mfd->cursor_buf_phys,
-					    DISPLAY_READ_DOMAIN,
-					    GEN_POOL,
-					    MDP_CURSOR_SIZE,
-					    SZ_4K,
-					    0,
-					    &cursor_buf_iommu);
-		if (cursor_buf_iommu)
-			mfd->cursor_buf_phys = (void *)cursor_buf_iommu;
+        if (mfd->lut_update) {
+                ret = fb_alloc_cmap(&fbi->cmap, 256, 0);
+                if (ret)
+                        printk(KERN_ERR "%s: fb_alloc_cmap() failed!\n",
+                                        __func__);
+        }
 
-		if (!mfd->cursor_buf)
-			mfd->cursor_update = 0;
-	}
+        if (register_framebuffer(fbi) < 0) {
+                if (mfd->lut_update)
+                        fb_dealloc_cmap(&fbi->cmap);
 
-	if (mfd->lut_update) {
-		ret = fb_alloc_cmap(&fbi->cmap, 256, 0);
-		if (ret)
-			printk(KERN_ERR "%s: fb_alloc_cmap() failed!\n",
-					__func__);
-	}
+                if (mfd->cursor_buf)
+                        dma_free_coherent(NULL,
+                                MDP_CURSOR_SIZE,
+                                mfd->cursor_buf,
+                                (dma_addr_t) mfd->cursor_buf_phys);
 
-	if (register_framebuffer(fbi) < 0) {
-		if (mfd->lut_update)
-			fb_dealloc_cmap(&fbi->cmap);
+                mfd->op_enable = FALSE;
+                return -EPERM;
+        }
 
-		if (mfd->cursor_buf)
-			dma_free_coherent(NULL,
-				MDP_CURSOR_SIZE,
-				mfd->cursor_buf,
-				(dma_addr_t) mfd->cursor_buf_phys);
+        if (fbram) {
+                fbram += fix->smem_len;
+                fbram_phys += fix->smem_len;
+                fbram_size -= fix->smem_len;
+        }
 
-		mfd->op_enable = FALSE;
-		return -EPERM;
-	}
-
-	fbram += fix->smem_len;
-	fbram_phys += fix->smem_len;
-	fbram_size -= fix->smem_len;
-
-	MSM_FB_INFO
-	    ("FrameBuffer[%d] %dx%d size=%d bytes is registered successfully!\n",
-	     mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
+        MSM_FB_INFO
+            ("FrameBuffer[%d] %dx%d size=%d bytes is registered successfully!\n",
+             mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
 
 	ret = 0;
 

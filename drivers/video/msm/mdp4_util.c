@@ -2891,126 +2891,88 @@ void mdp4_init_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 
 u32 mdp4_allocate_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 {
-	struct mdp_buf_type *buf;
-	ion_phys_addr_t	addr, read_addr = 0;
-	size_t buffer_size;
-	unsigned long len;
+        struct mdp_buf_type *buf;
+        ion_phys_addr_t        addr;
+        size_t buffer_size;
+        unsigned long len;
 
-	if (mix_num == MDP4_MIXER0)
-		buf = mfd->ov0_wb_buf;
-	else
-		buf = mfd->ov1_wb_buf;
+        if (mix_num == MDP4_MIXER0)
+                buf = mfd->ov0_wb_buf;
+        else
+                buf = mfd->ov1_wb_buf;
 
-	if (buf->write_addr || !IS_ERR_OR_NULL(buf->ihdl))
-		return 0;
+        if (buf->write_addr || !IS_ERR_OR_NULL(buf->ihdl))
+                return 0;
 
-	if (!buf->size) {
-		pr_err("%s:%d In valid size\n", __func__, __LINE__);
-		return -EINVAL;
-	}
+        if (!buf->size) {
+                pr_err("%s:%d In valid size\n", __func__, __LINE__);
+                return -EINVAL;
+        }
 
-	buffer_size = roundup(mfd->panel_info.xres * \
-		mfd->panel_info.yres * 3 * 2, SZ_4K);
+        buffer_size = roundup(mfd->panel_info.xres * \
+                mfd->panel_info.yres * 3 * 2, SZ_4K);
 
-	if (!IS_ERR_OR_NULL(mfd->iclient)) {
-		pr_info("%s:%d ion based allocation mfd->mem_hid 0x%x\n",
-			__func__, __LINE__, mfd->mem_hid);
-		buf->ihdl = ion_alloc(mfd->iclient, buffer_size, SZ_4K,
-			mfd->mem_hid);
-		if (!IS_ERR_OR_NULL(buf->ihdl)) {
-			if (mdp_iommu_split_domain) {
-				if (ion_map_iommu(mfd->iclient, buf->ihdl,
-					DISPLAY_READ_DOMAIN, GEN_POOL, SZ_4K,
-					0, &read_addr, &len, 0, 0)) {
-					pr_err("ion_map_iommu() read failed\n");
-					return -ENOMEM;
-				}
-				if (mfd->mem_hid & ION_SECURE) {
-					if (ion_phys(mfd->iclient, buf->ihdl,
-						&addr, (size_t *)&len)) {
-						pr_err("%s:%d: ion_phys map failed\n",
-							 __func__, __LINE__);
-						return -ENOMEM;
-					}
-				} else {
-					if (ion_map_iommu(mfd->iclient,
-						buf->ihdl, DISPLAY_WRITE_DOMAIN,
-						GEN_POOL, SZ_4K, 0, &addr, &len,
-						0, 0)) {
-						pr_err("ion_map_iommu() failed\n");
-						return -ENOMEM;
-					}
-				}
-			} else {
-				if (ion_map_iommu(mfd->iclient, buf->ihdl,
-					DISPLAY_READ_DOMAIN, GEN_POOL, SZ_4K,
-					0, &addr, &len, 0, 0)) {
-					pr_err("ion_map_iommu() write failed\n");
-					return -ENOMEM;
-				}
-			}
-		} else {
-			pr_err("%s:%d: ion_alloc failed\n", __func__,
-				__LINE__);
-			return -ENOMEM;
-		}
-	} else {
-		addr = allocate_contiguous_memory_nomap(buffer_size,
-			mfd->mem_hid, 4);
-	}
-	if (addr) {
-		pr_info("allocating %d bytes at %x for mdp writeback\n",
-			buffer_size, (u32) addr);
-		buf->write_addr = addr;
-
-		if (read_addr)
-			buf->read_addr = read_addr;
-		else
-			buf->read_addr = buf->write_addr;
-
-		return 0;
-	} else {
-		pr_err("%s cannot allocate memory for mdp writeback!\n",
-			 __func__);
-		return -ENOMEM;
-	}
+        if (!IS_ERR_OR_NULL(mfd->iclient)) {
+                pr_info("%s:%d ion based allocation mfd->mem_hid 0x%x\n",
+                        __func__, __LINE__, mfd->mem_hid);
+                buf->ihdl = ion_alloc(mfd->iclient, buffer_size, SZ_4K,
+                        mfd->mem_hid);
+                if (!IS_ERR_OR_NULL(buf->ihdl)) {
+                        if (ion_map_iommu(mfd->iclient, buf->ihdl,
+                                DISPLAY_DOMAIN, GEN_POOL, SZ_4K, 0, &addr,
+                                &len, 0, 0)) {
+                                pr_err("ion_map_iommu() failed\n");
+                                return -ENOMEM;
+                        }
+                } else {
+                        pr_err("%s:%d: ion_alloc failed\n", __func__,
+                                __LINE__);
+                        return -ENOMEM;
+                }
+        } else {
+                addr = allocate_contiguous_memory_nomap(buffer_size,
+                        mfd->mem_hid, 4);
+        }
+        if (addr) {
+                pr_info("allocating %d bytes at %x for mdp writeback\n",
+                        buffer_size, (u32) addr);
+                buf->write_addr = addr;
+                buf->read_addr = buf->write_addr;
+                return 0;
+        } else {
+                pr_err("%s cannot allocate memory for mdp writeback!\n",
+                         __func__);
+                return -ENOMEM;
+        }
 }
 
 void mdp4_free_writeback_buf(struct msm_fb_data_type *mfd, u32 mix_num)
 {
-	struct mdp_buf_type *buf;
+        struct mdp_buf_type *buf;
 
-	if (mix_num == MDP4_MIXER0)
-		buf = mfd->ov0_wb_buf;
-	else
-		buf = mfd->ov1_wb_buf;
+        if (mix_num == MDP4_MIXER0)
+                buf = mfd->ov0_wb_buf;
+        else
+                buf = mfd->ov1_wb_buf;
 
-	if (!IS_ERR_OR_NULL(mfd->iclient)) {
-		if (!IS_ERR_OR_NULL(buf->ihdl)) {
-			if (mdp_iommu_split_domain) {
-				if (!(mfd->mem_hid & ION_SECURE))
-					ion_unmap_iommu(mfd->iclient, buf->ihdl,
-						DISPLAY_WRITE_DOMAIN, GEN_POOL);
-				ion_unmap_iommu(mfd->iclient, buf->ihdl,
-					DISPLAY_READ_DOMAIN, GEN_POOL);
-			} else {
-				ion_unmap_iommu(mfd->iclient, buf->ihdl,
-					DISPLAY_READ_DOMAIN, GEN_POOL);
-			}
-			ion_free(mfd->iclient, buf->ihdl);
-			buf->ihdl = NULL;
-			pr_info("%s:%d free ION writeback imem",
-					__func__, __LINE__);
-		}
-	} else {
-		if (buf->write_addr) {
-			free_contiguous_memory_by_paddr(buf->write_addr);
-			pr_info("%s:%d free writeback pmem\n", __func__,
-				__LINE__);
-		}
-	}
-	buf->write_addr = 0;
-	buf->read_addr = 0;
+        if (!IS_ERR_OR_NULL(mfd->iclient)) {
+                if (!IS_ERR_OR_NULL(buf->ihdl)) {
+                        ion_unmap_iommu(mfd->iclient, buf->ihdl,
+                                DISPLAY_DOMAIN, GEN_POOL);
+                        ion_free(mfd->iclient, buf->ihdl);
+                        buf->ihdl = NULL;
+                        pr_info("%s:%d free ION writeback imem",
+                                        __func__, __LINE__);
+                }
+        } else {
+                if (buf->write_addr) {
+                        free_contiguous_memory_by_paddr(buf->write_addr);
+                        pr_info("%s:%d free writeback pmem\n", __func__,
+                                __LINE__);
+                }
+        }
+        buf->write_addr = 0;
+        buf->read_addr = 0;
 }
 
 static int mdp4_update_pcc_regs(uint32_t offset,

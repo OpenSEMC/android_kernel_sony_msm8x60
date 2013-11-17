@@ -760,12 +760,12 @@ struct msm_iommu_domain_name msm8930_iommu_ctx_names[] = {
 	/* Rotator */
 	{
 		.name = "rot_src",
-		.domain = ROTATOR_SRC_DOMAIN,
+		.domain = ROTATOR_DOMAIN,
 	},
 	/* Rotator */
 	{
 		.name = "rot_dst",
-		.domain = ROTATOR_SRC_DOMAIN,
+		.domain = ROTATOR_DOMAIN,
 	},
 	/* Video */
 	{
@@ -821,18 +821,18 @@ static struct mem_pool msm8930_camera_pools[] =  {
 		},
 };
 
-static struct mem_pool msm8930_display_read_pools[] =  {
+static struct mem_pool msm8930_display_pools[] =  {
 	[GEN_POOL] =
-	/* One address space for display reads */
+	/* One address space for display */
 		{
 			.paddr	= SZ_128K,
 			.size	= SZ_2G - SZ_128K,
 		},
 };
 
-static struct mem_pool msm8930_rotator_src_pools[] =  {
+static struct mem_pool msm8930_rotator_pools[] =  {
 	[GEN_POOL] =
-	/* One address space for rotator src */
+	/* One address space for rotator */
 		{
 			.paddr	= SZ_128K,
 			.size	= SZ_2G - SZ_128K,
@@ -848,13 +848,13 @@ static struct msm_iommu_domain msm8930_iommu_domains[] = {
 			.iova_pools = msm8930_camera_pools,
 			.npools = ARRAY_SIZE(msm8930_camera_pools),
 		},
-		[DISPLAY_READ_DOMAIN] = {
-			.iova_pools = msm8930_display_read_pools,
-			.npools = ARRAY_SIZE(msm8930_display_read_pools),
+		[DISPLAY_DOMAIN] = {
+			.iova_pools = msm8930_display_pools,
+			.npools = ARRAY_SIZE(msm8930_display_pools),
 		},
-		[ROTATOR_SRC_DOMAIN] = {
-			.iova_pools = msm8930_rotator_src_pools,
-			.npools = ARRAY_SIZE(msm8930_rotator_src_pools),
+		[ROTATOR_DOMAIN] = {
+			.iova_pools = msm8930_rotator_pools,
+			.npools = ARRAY_SIZE(msm8930_rotator_pools),
 		},
 };
 

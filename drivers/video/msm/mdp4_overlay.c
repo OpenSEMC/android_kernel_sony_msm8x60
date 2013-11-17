@@ -152,42 +152,42 @@ static int mdp4_overlay_cache_reg(struct msm_fb_data_type *mfd,
  */
 void mdp4_overlay_iommu_unmap_freelist(int mixer)
 {
-	int i;
-	struct ion_handle *ihdl;
-	struct iommu_free_list *flist, *pflist;
+        int i;
+        struct ion_handle *ihdl;
+        struct iommu_free_list *flist, *pflist;
 
-	if (mixer >= MDP4_MIXER_MAX)
-		return;
+        if (mixer >= MDP4_MIXER_MAX)
+                return;
 
-	mutex_lock(&iommu_mutex);
+        mutex_lock(&iommu_mutex);
 
-	pflist = &ctrl->iommu_free_prev[mixer];
-	flist = &ctrl->iommu_free[mixer];
-	pr_debug("%s: mixer=%d fndx=%d %d\n", __func__,
-			mixer, pflist->fndx, flist->fndx);
-	if (pflist->fndx == 0) {
-		goto flist_to_pflist;
-	}
-	for (i = 0; i < IOMMU_FREE_LIST_MAX; i++) {
-		ihdl = pflist->ihdl[i];
-		if (ihdl == NULL)
-			continue;
-		pr_debug("%s: mixer=%d i=%d ihdl=0x%p\n", __func__,
-					mixer, i, ihdl);
-		ion_unmap_iommu(display_iclient, ihdl, DISPLAY_READ_DOMAIN,
-							GEN_POOL);
-		mdp4_stat.iommu_unmap++;
-		pr_debug("%s: map=%d unmap=%d drop=%d\n", __func__,
-			(int)mdp4_stat.iommu_map, (int)mdp4_stat.iommu_unmap,
-				(int)mdp4_stat.iommu_drop);
-		ion_free(display_iclient, ihdl);
-	}
+        pflist = &ctrl->iommu_free_prev[mixer];
+        flist = &ctrl->iommu_free[mixer];
+        pr_debug("%s: mixer=%d fndx=%d %d\n", __func__,
+                        mixer, pflist->fndx, flist->fndx);
+        if (pflist->fndx == 0) {
+                goto flist_to_pflist;
+        }
+        for (i = 0; i < IOMMU_FREE_LIST_MAX; i++) {
+                ihdl = pflist->ihdl[i];
+                if (ihdl == NULL)
+                        continue;
+                pr_debug("%s: mixer=%d i=%d ihdl=0x%p\n", __func__,
+                                        mixer, i, ihdl);
+                ion_unmap_iommu(display_iclient, ihdl, DISPLAY_DOMAIN,
+                                                        GEN_POOL);
+                mdp4_stat.iommu_unmap++;
+                pr_debug("%s: map=%d unmap=%d drop=%d\n", __func__,
+                        (int)mdp4_stat.iommu_map, (int)mdp4_stat.iommu_unmap,
+                                (int)mdp4_stat.iommu_drop);
+                ion_free(display_iclient, ihdl);
+        }
 
 flist_to_pflist:
-	/* move flist to pflist*/
-	memcpy(pflist, flist, sizeof(*pflist));
-	memset(flist, 0, sizeof(*flist));
-	mutex_unlock(&iommu_mutex);
+        /* move flist to pflist*/
+        memcpy(pflist, flist, sizeof(*pflist));
+        memset(flist, 0, sizeof(*flist));
+        mutex_unlock(&iommu_mutex);
 }
 
 void mdp4_overlay_iommu_2freelist(int mixer, struct ion_handle *ihdl)
@@ -275,33 +275,33 @@ int mdp4_overlay_iommu_map_buf(int mem_id,
 	}
 	pr_debug("%s(): ion_hdl %p, ion_buf %d\n", __func__, *srcp_ihdl, mem_id);
 	pr_debug("mixer %u, pipe %u, plane %u\n", pipe->mixer_num,
-		pipe->pipe_ndx, plane);
-	if (ion_map_iommu(display_iclient, *srcp_ihdl,
-		DISPLAY_READ_DOMAIN, GEN_POOL, SZ_4K, 0, start,
-		len, 0, 0)) {
-		ion_free(display_iclient, *srcp_ihdl);
-		pr_err("ion_map_iommu() failed\n");
-		return -EINVAL;
-	}
+                pipe->pipe_ndx, plane);
+        if (ion_map_iommu(display_iclient, *srcp_ihdl,
+                DISPLAY_DOMAIN, GEN_POOL, SZ_4K, 0, start,
+                len, 0, 0)) {
+                ion_free(display_iclient, *srcp_ihdl);
+                pr_err("ion_map_iommu() failed\n");
+                return -EINVAL;
+        }
 
 	mutex_lock(&iommu_mutex);
-	iom = &pipe->iommu;
-	if (iom->prev_ihdl[plane]) {
-		mdp4_overlay_iommu_2freelist(pipe->mixer_num,
-						iom->prev_ihdl[plane]);
-		mdp4_stat.iommu_drop++;
-		pr_err("%s: dropped, ndx=%d plane=%d\n", __func__,
-						pipe->pipe_ndx, plane);
-	}
-	iom->prev_ihdl[plane] = iom->ihdl[plane];
-	iom->ihdl[plane] = *srcp_ihdl;
-	mdp4_stat.iommu_map++;
+        iom = &pipe->iommu;
+        if (iom->prev_ihdl[plane]) {
+                mdp4_overlay_iommu_2freelist(pipe->mixer_num,
+                                                iom->prev_ihdl[plane]);
+                mdp4_stat.iommu_drop++;
+                pr_err("%s: dropped, ndx=%d plane=%d\n", __func__,
+                                                pipe->pipe_ndx, plane);
+        }
+        iom->prev_ihdl[plane] = iom->ihdl[plane];
+        iom->ihdl[plane] = *srcp_ihdl;
+        mdp4_stat.iommu_map++;
 
-	pr_debug("%s: ndx=%d plane=%d prev=0x%p cur=0x%p start=0x%lx len=%lx\n",
-		 __func__, pipe->pipe_ndx, plane, iom->prev_ihdl[plane],
-			iom->ihdl[plane], *start, *len);
-	mutex_unlock(&iommu_mutex);
-	return 0;
+        pr_debug("%s: ndx=%d plane=%d prev=0x%p cur=0x%p start=0x%lx len=%lx\n",
+                 __func__, pipe->pipe_ndx, plane, iom->prev_ihdl[plane],
+                        iom->ihdl[plane], *start, *len);
+        mutex_unlock(&iommu_mutex);
+        return 0;
 }
 
 static struct mdp4_iommu_pipe_info mdp_iommu[MDP4_MIXER_MAX][OVERLAY_PIPE_MAX];
@@ -324,7 +324,7 @@ void mdp4_iommu_unmap(struct mdp4_overlay_pipe *pipe)
 					iom_pipe_info->prev_ihdl[i]);
 				ion_unmap_iommu(display_iclient,
 					iom_pipe_info->prev_ihdl[i],
-					DISPLAY_READ_DOMAIN, GEN_POOL);
+					DISPLAY_DOMAIN, GEN_POOL);
 				ion_free(display_iclient,
 					iom_pipe_info->prev_ihdl[i]);
 				iom_pipe_info->prev_ihdl[i] = NULL;
@@ -338,7 +338,7 @@ void mdp4_iommu_unmap(struct mdp4_overlay_pipe *pipe)
 						iom_pipe_info->ihdl[i]);
 					ion_unmap_iommu(display_iclient,
 						iom_pipe_info->ihdl[i],
-						DISPLAY_READ_DOMAIN, GEN_POOL);
+						DISPLAY_DOMAIN, GEN_POOL);
 					ion_free(display_iclient,
 						iom_pipe_info->ihdl[i]);
 					iom_pipe_info->ihdl[i] = NULL;
@@ -4055,94 +4055,92 @@ void mdp4_overlay_commit_finish(struct fb_info *info)
 struct msm_iommu_ctx {
 	char *name;
 	int  domain;
-};
-
-static struct msm_iommu_ctx msm_iommu_ctx_names[] = {
-	/* Display read*/
+} msm_iommu_ctx_names[] = {
+	/* Display */
 	{
 		.name = "mdp_port0_cb0",
-		.domain = DISPLAY_READ_DOMAIN,
+		.domain = DISPLAY_DOMAIN,
 	},
-	/* Display read*/
+	/* Display */
 	{
 		.name = "mdp_port0_cb1",
-		.domain = DISPLAY_READ_DOMAIN,
+		.domain = DISPLAY_DOMAIN,
 	},
-	/* Display write */
+	/* Display */
 	{
 		.name = "mdp_port1_cb0",
-		.domain = DISPLAY_READ_DOMAIN,
+		.domain = DISPLAY_DOMAIN,
 	},
-	/* Display write */
+	/* Display */
 	{
 		.name = "mdp_port1_cb1",
-		.domain = DISPLAY_READ_DOMAIN,
+		.domain = DISPLAY_DOMAIN,
 	},
 };
 
-static struct msm_iommu_ctx msm_iommu_split_ctx_names[] = {
-	/* Display read*/
-	{
-		.name = "mdp_port0_cb0",
-		.domain = DISPLAY_READ_DOMAIN,
-	},
-	/* Display read*/
-	{
-		.name = "mdp_port0_cb1",
-		.domain = DISPLAY_WRITE_DOMAIN,
-	},
-	/* Display write */
-	{
-		.name = "mdp_port1_cb0",
-		.domain = DISPLAY_READ_DOMAIN,
-	},
-	/* Display write */
-	{
-		.name = "mdp_port1_cb1",
-		.domain = DISPLAY_WRITE_DOMAIN,
-	},
-};
+static int iommu_enabled;
 
 void mdp4_iommu_attach(void)
 {
-	static int done;
-	struct msm_iommu_ctx *ctx_names;
-	struct iommu_domain *domain;
-	int i, arr_size;
+        struct iommu_domain *domain;
+        int i;
 
-	if (!done) {
-		if (mdp_iommu_split_domain) {
-			ctx_names = msm_iommu_split_ctx_names;
-			arr_size = ARRAY_SIZE(msm_iommu_split_ctx_names);
-		} else {
-			ctx_names = msm_iommu_ctx_names;
-			arr_size = ARRAY_SIZE(msm_iommu_ctx_names);
-		}
+        if (!iommu_enabled) {
+                for (i = 0; i < ARRAY_SIZE(msm_iommu_ctx_names); i++) {
+                        int domain_idx;
+                        struct device *ctx = msm_iommu_get_ctx(
+                                msm_iommu_ctx_names[i].name);
 
-		for (i = 0; i < arr_size; i++) {
-			int domain_idx;
-			struct device *ctx = msm_iommu_get_ctx(
-				ctx_names[i].name);
+                        if (!ctx)
+                                continue;
 
-			if (!ctx)
-				continue;
+                        domain_idx = msm_iommu_ctx_names[i].domain;
 
-			domain_idx = ctx_names[i].domain;
+                        domain = msm_get_iommu_domain(domain_idx);
+                        if (!domain)
+                                continue;
 
-			domain = msm_get_iommu_domain(domain_idx);
-			if (!domain)
-				continue;
+                        if (iommu_attach_device(domain,        ctx)) {
+                                WARN(1, "%s: could not attach domain %d to context %s."
+                                        " iommu programming will not occur.\n",
+                                        __func__, domain_idx,
+                                        msm_iommu_ctx_names[i].name);
+                                continue;
+                        }
+                }
+                pr_debug("Attached MDP IOMMU device\n");
+                iommu_enabled = 1;
+        }
+}
 
-			if (iommu_attach_device(domain,	ctx)) {
-				WARN(1, "%s: could not attach domain %d to context %s."
-					" iommu programming will not occur.\n",
-					__func__, domain_idx,
-					ctx_names[i].name);
-				continue;
-			}
-		}
-		done = 1;
-	}
+void mdp4_iommu_detach(void)
+{
+        struct iommu_domain *domain;
+        int i;
+
+        if (!mdp_check_suspended() || mdp4_extn_disp)
+                return;
+
+        if (iommu_enabled) {
+                for (i = 0; i < ARRAY_SIZE(msm_iommu_ctx_names); i++) {
+                        int domain_idx;
+                        struct device *ctx = msm_iommu_get_ctx(
+                                msm_iommu_ctx_names[i].name);
+
+                        if (!ctx)
+                                continue;
+
+                        domain_idx = msm_iommu_ctx_names[i].domain;
+
+                        domain = msm_get_iommu_domain(domain_idx);
+                        if (!domain)
+                                continue;
+
+                        iommu_detach_device(domain,        ctx);
+                }
+                pr_debug("Detached MDP IOMMU device\n");
+                iommu_enabled = 0;
+        }
 }
 
 int mdp4_v4l2_overlay_set(struct fb_info *info, struct mdp_overlay *req,
