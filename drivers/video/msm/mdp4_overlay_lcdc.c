@@ -601,11 +601,14 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	pipe->src_x = 0;
 	pipe->dst_h = fbi->var.yres;
 	pipe->dst_w = fbi->var.xres;
-	
-	if (mfd->display_iova)
-		pipe->srcp0_addr = mfd->display_iova + buf_offset;
-	else
+	if (mfd->map_buffer) {
+		pipe->srcp0_addr = (unsigned int)mfd->map_buffer->iova[0] + \
+			buf_offset;
+		pr_debug("start 0x%lx srcp0_addr 0x%x\n", mfd->
+			map_buffer->iova[0], pipe->srcp0_addr);
+	} else {
 		pipe->srcp0_addr = (uint32)(buf + buf_offset);
+	}
 
 	pipe->srcp0_ystride = fbi->fix.line_length;
 	pipe->bpp = bpp;
@@ -1024,49 +1027,50 @@ void mdp4_lcdc_overlay_blt_stop(struct msm_fb_data_type *mfd)
 
 void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 {
-	struct fb_info *fbi = mfd->fbi;
-	uint8 *buf;
-	unsigned int buf_offset;
-	int bpp;
-	int cnt, cndx = 0;
-	struct vsycn_ctrl *vctrl;
-	struct mdp4_overlay_pipe *pipe;
+        struct fb_info *fbi = mfd->fbi;
+        uint8 *buf;
+        unsigned int buf_offset;
+        int bpp;
+        int cnt, cndx = 0;
+        struct vsycn_ctrl *vctrl;
+        struct mdp4_overlay_pipe *pipe;
 
-	mutex_lock(&mfd->dma->ov_mutex);
+        mutex_lock(&mfd->dma->ov_mutex);
 
-	vctrl = &vsync_ctrl_db[cndx];
-	pipe = vctrl->base_pipe;
+        vctrl = &vsync_ctrl_db[cndx];
+        pipe = vctrl->base_pipe;
 
-	if (!pipe || !mfd->panel_power_on) {
-		mutex_unlock(&mfd->dma->ov_mutex);
-		return;
-	}
+        if (!pipe || !mfd->panel_power_on) {
+                mutex_unlock(&mfd->dma->ov_mutex);
+                return;
+        }
 
-	pr_debug("%s: cpu=%d pid=%d\n", __func__,
-			smp_processor_id(), current->pid);
-	if (pipe->pipe_type == OVERLAY_TYPE_RGB) {
-		bpp = fbi->var.bits_per_pixel / 8;
-		buf = (uint8 *) fbi->fix.smem_start;
-		buf_offset = calc_fb_offset(mfd, fbi, bpp);
+        pr_debug("%s: cpu=%d pid=%d\n", __func__,
+                        smp_processor_id(), current->pid);
+        if (pipe->pipe_type == OVERLAY_TYPE_RGB) {
+                bpp = fbi->var.bits_per_pixel / 8;
+                buf = (uint8 *) fbi->fix.smem_start;
+                buf_offset = calc_fb_offset(mfd, fbi, bpp);
 
-		if (mfd->display_iova)
-			pipe->srcp0_addr = mfd->display_iova + buf_offset;
-		else
-			pipe->srcp0_addr = (uint32)(buf + buf_offset);
+                if (mfd->map_buffer->iova[0]) {
+                        pipe->srcp0_addr = mfd->map_buffer->iova[0]
+                                + buf_offset;
+                } else
+                        pipe->srcp0_addr = (uint32)(buf + buf_offset);
 
-		mdp4_lcdc_pipe_queue(0, pipe);
-	}
+                mdp4_lcdc_pipe_queue(0, pipe);
+        }
 
-	mdp4_overlay_mdp_perf_upd(mfd, 1);
+        mdp4_overlay_mdp_perf_upd(mfd, 1);
 
-	cnt = mdp4_lcdc_pipe_commit(cndx, 0);
-	if (cnt >= 0) {
-		if (pipe->ov_blt_addr)
-			mdp4_lcdc_wait4ov(cndx);
-		else
-			mdp4_lcdc_wait4dmap(cndx);
-	}
+        cnt = mdp4_lcdc_pipe_commit(cndx, 0);
+        if (cnt >= 0) {
+                if (pipe->ov_blt_addr)
+                        mdp4_lcdc_wait4ov(cndx);
+                else
+                        mdp4_lcdc_wait4dmap(cndx);
+        }
 
-	mdp4_overlay_mdp_perf_upd(mfd, 0);
-	mutex_unlock(&mfd->dma->ov_mutex);
+        mdp4_overlay_mdp_perf_upd(mfd, 0);
+        mutex_unlock(&mfd->dma->ov_mutex);
 }

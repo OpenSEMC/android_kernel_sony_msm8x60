@@ -263,28 +263,33 @@ static int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
 	pipe->dst_y = 0;
 	pipe->dst_x = 0;
 
-	mdp4_overlay_mdp_pipe_req(pipe, mfd);
-	mdp4_calc_blt_mdp_bw(mfd, pipe);
-	
-	if (mfd->display_iova)
-		pipe->srcp0_addr = mfd->display_iova + buf_offset;
-	else
-		pipe->srcp0_addr = (uint32)(buf + buf_offset);
+        mdp4_overlay_mdp_pipe_req(pipe, mfd);
 
-	mdp4_mixer_stage_up(pipe, 0);
+        mdp4_calc_blt_mdp_bw(mfd, pipe);
 
-	mdp4_overlayproc_cfg(pipe);
+        if (mfd->map_buffer) {
+                pipe->srcp0_addr = (unsigned int)mfd->map_buffer->iova[0] + \
+                        buf_offset;
+                pr_debug("start 0x%lx srcp0_addr 0x%x\n", mfd->
+                        map_buffer->iova[0], pipe->srcp0_addr);
+        } else {
+                pipe->srcp0_addr = (uint32)(buf + buf_offset);
+        }
 
-	if (hdmi_prim_display)
-		outpdw(MDP_BASE + 0x100F4, 0x01);
-	else
-		outpdw(MDP_BASE + 0x100F4, 0x02);
+        mdp4_mixer_stage_up(pipe, 0);
 
-	/* MDP cmd block disable */
-	mdp_clk_ctrl(0);
+        mdp4_overlayproc_cfg(pipe);
 
-	wmb();
-	return 0;
+        if (hdmi_prim_display)
+                outpdw(MDP_BASE + 0x100F4, 0x01);
+        else
+                outpdw(MDP_BASE + 0x100F4, 0x02);
+
+        /* MDP cmd block disable */
+        mdp_clk_ctrl(0);
+
+        wmb();
+        return 0;
 }
 
 /*

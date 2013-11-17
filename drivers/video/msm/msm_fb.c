@@ -1221,6 +1221,9 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	int *id;
 	int fbram_offset;
 	int remainder, remainder_mode2;
+	static int subsys_id[2] = {MSM_SUBSYSTEM_DISPLAY,
+		MSM_SUBSYSTEM_ROTATOR};
+	unsigned int flags = MSM_SUBSYSTEM_MAP_IOVA;
 
 	/*
 	 * fb info initialization
@@ -1501,43 +1504,17 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fbi->screen_base = fbram;
 	fbi->fix.smem_start = (unsigned long)fbram_phys;
 
-/* jb_mr1_chocolate
-	mfd->map_buffer = msm_subsystem_map_buffer(
-		fbi->fix.smem_start, fbi->fix.smem_len,
-		flags, subsys_id, 2);
-	if (mfd->map_buffer) {
-		pr_debug("%s(): buf 0x%lx, mfd->map_buffer->iova[0] 0x%lx\n"
-			"mfd->map_buffer->iova[1] 0x%lx", __func__,
-			fbi->fix.smem_start, mfd->map_buffer->iova[0],
-			mfd->map_buffer->iova[1]);
-	}
-*/
-
-/* FIXME: check if write domain needs to be mapped
-	msm_iommu_map_contig_buffer(fbi->fix.smem_start,
-					DISPLAY_WRITE_DOMAIN,
-					GEN_POOL,
-					fbi->fix.smem_len,
-					SZ_4K,
-					0,
-					&(mfd->display_iova));
-*/
-
-	msm_iommu_map_contig_buffer(fbi->fix.smem_start,
-					DISPLAY_READ_DOMAIN,
-					GEN_POOL,
-					fbi->fix.smem_len,
-					SZ_4K,
-					0,
-					&(mfd->display_iova));
-
-	msm_iommu_map_contig_buffer(fbi->fix.smem_start,
-					ROTATOR_SRC_DOMAIN,
-					GEN_POOL,
-					fbi->fix.smem_len,
-					SZ_4K,
-					0,
-					&(mfd->rotator_iova));
+	if (fbi->fix.smem_start) {
+                mfd->map_buffer = msm_subsystem_map_buffer(
+                        fbi->fix.smem_start, fbi->fix.smem_len,
+                        flags, subsys_id, 2);
+                if (mfd->map_buffer) {
+                        pr_debug("%s(): buf 0x%lx, mfd->map_buffer->iova[0] 0x%lx\n"
+                                "mfd->map_buffer->iova[1] 0x%lx", __func__,
+                                fbi->fix.smem_start, mfd->map_buffer->iova[0],
+                                mfd->map_buffer->iova[1]);
+                }
+        }
 
 	if (!bf_supported || mfd->index == 0)
 		memset(fbi->screen_base, 0x0, fix->smem_len);
@@ -4302,41 +4279,32 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 EXPORT_SYMBOL(msm_fb_add_device);
 
 int get_fb_phys_info(unsigned long *start, unsigned long *len, int fb_num,
-	int subsys_id)
+        int subsys_id)
 {
-	struct fb_info *info;
-	struct msm_fb_data_type *mfd;
+        struct fb_info *info;
+        struct msm_fb_data_type *mfd;
 
-	if (fb_num > MAX_FBI_LIST ||
-		(subsys_id != DISPLAY_SUBSYSTEM_ID &&
-		 subsys_id != ROTATOR_SUBSYSTEM_ID)) {
-		pr_err("%s(): Invalid parameters\n", __func__);
-		return -1;
-	}
+        if (fb_num > MAX_FBI_LIST ||
+                (subsys_id != DISPLAY_SUBSYSTEM_ID &&
+                 subsys_id != ROTATOR_SUBSYSTEM_ID)) {
+                pr_err("%s(): Invalid parameters\n", __func__);
+                return -1;
+        }
 
-	info = fbi_list[fb_num];
-	if (!info) {
-		pr_err("%s(): info is NULL\n", __func__);
-		return -1;
-	}
+        info = fbi_list[fb_num];
+        if (!info) {
+                pr_err("%s(): info is NULL\n", __func__);
+                return -1;
+        }
 
-	mfd = (struct msm_fb_data_type *)info->par;
-	
-	if (subsys_id == DISPLAY_SUBSYSTEM_ID) {
-		if (mfd->display_iova)
-			*start = mfd->display_iova;
-		else
-			*start = info->fix.smem_start;
-	} else {
-		if (mfd->rotator_iova)
-			*start = mfd->rotator_iova;
-		else
-			*start = info->fix.smem_start;
-	}
+        mfd = (struct msm_fb_data_type *)info->par;
+        if (mfd->map_buffer)
+                *start = mfd->map_buffer->iova[subsys_id];
+        else
+                *start = info->fix.smem_start;
+        *len = info->fix.smem_len;
 
-	*len = info->fix.smem_len;
-
-	return 0;
+        return 0;
 }
 EXPORT_SYMBOL(get_fb_phys_info);
 
