@@ -90,4 +90,10 @@ unsigned long acpuclk_wait_for_irq(void);
  */
 void acpuclk_register(struct acpuclk_data *data);
 
+/**
+ * acpuclk_check_khz_value(khz) - Check for the current khz of the CPU.
+ * Required by msm_mpdecision
+ */
+extern uint32_t acpu_check_khz_value(unsigned long khz);
+
 #endif /*__ARCH_ARM_MACH_MSM_ACPUCLOCK_H*/
