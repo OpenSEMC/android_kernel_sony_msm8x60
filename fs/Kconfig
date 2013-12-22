@@ -6,7 +6,12 @@ menu "File systems"
 
 # Use unaligned word dcache accesses
 config DCACHE_WORD_ACCESS
-       bool
+	bool
+
+config VFS_CACHE_PRESSURE
+	int "vfs Cache Pressure"
+	default 100
+	help
 
 if BLOCK
 
