@@ -474,7 +474,7 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 
 	if (rcg->enabled) {
 		/* Enable source clock dependency for the new freq. */
-		rc = clk_enable(nf->src_clk);
+		rc = clk_prepare_enable(nf->src_clk);
 		if (rc)
 			return rc;
 	}
@@ -524,7 +524,7 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 
 	/* Release source requirements of the old freq. */
 	if (rcg->enabled)
-		clk_disable(cf->src_clk);
+		clk_disable_unprepare(cf->src_clk);
 
 	return rc;
 }
