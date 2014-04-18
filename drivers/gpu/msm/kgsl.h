@@ -151,6 +151,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_GLOBAL BIT(1)
 /* The memdesc is frozen during a snapshot */
 #define KGSL_MEMDESC_FROZEN BIT(2)
+/* The memdesc is mapped into a pagetable */
+#define KGSL_MEMDESC_MAPPED BIT(3)
 
 /* shared memory allocation */
 struct kgsl_memdesc {
@@ -188,6 +190,9 @@ struct kgsl_mem_entry {
 	/* back pointer to private structure under whose context this
 	* allocation is made */
 	struct kgsl_process_private *priv;
+	/* Initialized to 0, set to 1 when entry is marked for freeing */
+	int pending_free;
+	struct kgsl_device_private *dev_priv;
 };
 
 #ifdef CONFIG_MSM_KGSL_MMU_PAGE_FAULT
@@ -196,6 +201,7 @@ struct kgsl_mem_entry {
 #define MMU_CONFIG 1
 #endif
 
+void kgsl_hang_check(struct work_struct *work);
 void kgsl_mem_entry_destroy(struct kref *kref);
 int kgsl_postmortem_dump(struct kgsl_device *device, int manual);
 
@@ -256,7 +262,7 @@ static inline int kgsl_gpuaddr_in_memdesc(const struct kgsl_memdesc *memdesc,
 		size = 1;
 
 	/* don't overflow */
-	if ((gpuaddr + size) < gpuaddr)
+	if (size > UINT_MAX - gpuaddr)
 		return 0;
 
 	if (gpuaddr >= memdesc->gpuaddr &&

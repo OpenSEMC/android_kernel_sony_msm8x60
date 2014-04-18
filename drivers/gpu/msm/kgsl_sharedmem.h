@@ -138,6 +138,9 @@ kgsl_sharedmem_map_vma(struct vm_area_struct *vma,
 
 static inline void *kgsl_sg_alloc(unsigned int sglen)
 {
+	if ((sglen == 0) || (sglen >= ULONG_MAX / sizeof(struct scatterlist)))
+		return NULL;
+
 	if ((sglen * sizeof(struct scatterlist)) <  PAGE_SIZE)
 		return kzalloc(sglen * sizeof(struct scatterlist), GFP_KERNEL);
 	else {
@@ -263,6 +266,11 @@ kgsl_allocate(struct kgsl_memdesc *memdesc,
 	ret = kgsl_sharedmem_page_alloc(memdesc, pagetable, size);
 	if (ret)
 		return ret;
+	ret = kgsl_mmu_get_gpuaddr(pagetable, memdesc);
+	if (ret) {
+		kgsl_sharedmem_free(memdesc);
+		return ret;
+	}
 	ret = kgsl_mmu_map(pagetable, memdesc);
 	if (ret)
 		kgsl_sharedmem_free(memdesc);
