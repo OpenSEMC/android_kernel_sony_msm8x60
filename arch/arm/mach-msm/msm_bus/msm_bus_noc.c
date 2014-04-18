@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -189,10 +189,10 @@ static uint32_t noc_sat_field(uint64_t bw, uint32_t ws, uint32_t qos_freq)
 }
 
 static void noc_set_qos_mode(struct msm_bus_noc_info *ninfo, uint32_t mport,
-	uint8_t mode)
+	uint8_t mode, uint8_t perm_mode)
 {
 	if (mode < NOC_QOS_MODE_MAX &&
-		((1 << mode) & ninfo->mas_modes[mport])) {
+		((1 << mode) & perm_mode)) {
 		uint32_t reg_val;
 
 		reg_val = readl_relaxed(NOC_QOS_MODEn_ADDR(ninfo->base,
@@ -297,13 +297,13 @@ static void msm_bus_noc_set_qos_bw(struct msm_bus_noc_info *ninfo,
 }
 
 uint8_t msm_bus_noc_get_qos_mode(struct msm_bus_noc_info *ninfo,
-	uint32_t mport)
+	uint32_t mport, uint32_t mode, uint32_t perm_mode)
 {
-	if (NOC_QOS_MODES_ALL_PERM == ninfo->mas_modes[mport])
+	if (NOC_QOS_MODES_ALL_PERM == perm_mode)
 		return readl_relaxed(NOC_QOS_MODEn_ADDR(ninfo->base,
 			mport)) & NOC_QOS_MODEn_MODE_BMSK;
 	else
-		return 31 - __CLZ(ninfo->mas_modes[mport] &
+		return 31 - __CLZ(mode &
 			NOC_QOS_MODES_ALL_PERM);
 }
 
@@ -320,9 +320,9 @@ void msm_bus_noc_get_qos_priority(struct msm_bus_noc_info *ninfo,
 }
 
 void msm_bus_noc_get_qos_bw(struct msm_bus_noc_info *ninfo,
-	uint32_t mport, struct msm_bus_noc_qos_bw *qbw)
+	uint32_t mport, uint8_t perm_mode, struct msm_bus_noc_qos_bw *qbw)
 {
-	if (ninfo->mas_modes[mport] & (NOC_QOS_PERM_MODE_LIMITER |
+	if (perm_mode & (NOC_QOS_PERM_MODE_LIMITER |
 		NOC_QOS_PERM_MODE_REGULATOR)) {
 		uint32_t bw_val = readl_relaxed(NOC_QOS_BWn_ADDR(ninfo->
 			base, mport)) & NOC_QOS_BWn_BW_BMSK;
@@ -375,7 +375,7 @@ static int msm_bus_noc_mas_init(struct msm_bus_noc_info *ninfo,
 		}
 
 		noc_set_qos_mode(ninfo, info->node_info->qport[i], info->
-			node_info->mode);
+			node_info->mode, info->node_info->perm_mode);
 	}
 
 	return 0;
@@ -388,7 +388,8 @@ static void msm_bus_noc_node_init(void *hw_data,
 		(struct msm_bus_noc_info *)hw_data;
 
 	if (!IS_SLAVE(info->node_info->priv_id))
-		msm_bus_noc_mas_init(ninfo, info);
+		if (info->node_info->hw_sel != MSM_BUS_RPM)
+			msm_bus_noc_mas_init(ninfo, info);
 }
 
 static int msm_bus_noc_allocate_commit_data(struct msm_bus_fabric_registration
@@ -503,7 +504,7 @@ static void msm_bus_noc_update_bw(struct msm_bus_inode_info *hop,
 	struct msm_bus_inode_info *info,
 	struct msm_bus_fabric_registration *fab_pdata,
 	void *sel_cdata, int *master_tiers,
-	long int add_bw)
+	int64_t add_bw)
 {
 	struct msm_bus_noc_info *ninfo;
 	struct msm_bus_noc_qos_bw qos_bw;
@@ -518,42 +519,50 @@ static void msm_bus_noc_update_bw(struct msm_bus_inode_info *hop,
 		return;
 	}
 
-	if (!info->node_info->qport) {
-		MSM_BUS_DBG("NOC: No QoS Ports to update bw\n");
-		return;
+	if (info->node_info->num_mports == 0) {
+		MSM_BUS_DBG("NOC: Skip Master BW\n");
+		goto skip_mas_bw;
 	}
 
 	ports = info->node_info->num_mports;
-	qos_bw.ws = info->node_info->ws;
-
 	bw = INTERLEAVED_BW(fab_pdata, add_bw, ports);
 
-	MSM_BUS_DBG("NOC: Update bw for: %d: %ld\n",
+	MSM_BUS_DBG("NOC: Update bw for: %d: %lld\n",
 		info->node_info->priv_id, add_bw);
 	for (i = 0; i < ports; i++) {
 		sel_cd->mas[info->node_info->masterp[i]].bw += bw;
 		sel_cd->mas[info->node_info->masterp[i]].hw_id =
 			info->node_info->mas_hw_id;
-		qos_bw.bw = sel_cd->mas[info->node_info->masterp[i]].bw;
-		MSM_BUS_DBG("NOC: Update mas_bw for ID: %d, BW: %ld, QoS: %u\n",
+		MSM_BUS_DBG("NOC: Update mas_bw: ID: %d, BW: %llu ports:%d\n",
 			info->node_info->priv_id,
 			sel_cd->mas[info->node_info->masterp[i]].bw,
-			qos_bw.ws);
+			ports);
 		/* Check if info is a shared master.
 		 * If it is, mark it dirty
 		 * If it isn't, then set QOS Bandwidth
 		 **/
 		if (info->node_info->hw_sel == MSM_BUS_RPM)
 			sel_cd->mas[info->node_info->masterp[i]].dirty = 1;
-		else
+		else {
+			if (!info->node_info->qport) {
+				MSM_BUS_DBG("No qos ports to update!\n");
+				break;
+			}
+			qos_bw.bw = sel_cd->mas[info->node_info->masterp[i]].
+				bw;
+			qos_bw.ws = info->node_info->ws;
 			msm_bus_noc_set_qos_bw(ninfo,
 				info->node_info->qport[i],
 				info->node_info->perm_mode, &qos_bw);
+			MSM_BUS_DBG("NOC: QoS: Update mas_bw: ws: %u\n",
+				qos_bw.ws);
+		}
 	}
 
+skip_mas_bw:
 	ports = hop->node_info->num_sports;
 	if (ports == 0) {
-		MSM_BUS_ERR("\nDIVIDE BY 0, hop: %d\n",
+		MSM_BUS_DBG("\nDIVIDE BY 0, hop: %d\n",
 			hop->node_info->priv_id);
 		return;
 	}
@@ -562,7 +571,7 @@ static void msm_bus_noc_update_bw(struct msm_bus_inode_info *hop,
 		sel_cd->slv[hop->node_info->slavep[i]].bw += bw;
 		sel_cd->slv[hop->node_info->slavep[i]].hw_id =
 			hop->node_info->slv_hw_id;
-		MSM_BUS_DBG("NOC: Update slave_bw for ID: %d -> %ld\n",
+		MSM_BUS_DBG("NOC: Update slave_bw for ID: %d -> %llu\n",
 			hop->node_info->priv_id,
 			sel_cd->slv[hop->node_info->slavep[i]].bw);
 		MSM_BUS_DBG("NOC: Update slave_bw for hw_id: %d, index: %d\n",
@@ -581,6 +590,7 @@ static int msm_bus_noc_commit(struct msm_bus_fabric_registration
 	*fab_pdata, void *hw_data, void **cdata)
 {
 	MSM_BUS_DBG("\nReached NOC Commit\n");
+	msm_bus_remote_hw_commit(fab_pdata, hw_data, cdata);
 	return 0;
 }
 

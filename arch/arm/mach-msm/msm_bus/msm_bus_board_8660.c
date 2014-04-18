@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,8 +21,13 @@
 #include <mach/rpm.h>
 #include "msm_bus_core.h"
 
+#if 0
+#define NMASTERS 39
+#define NSLAVES 69
+#else
 #define NMASTERS 45
 #define NSLAVES 75
+#endif
 #define NFAB_8660 5
 
 enum msm_bus_fabric_tiered_slave_type {
