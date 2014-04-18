@@ -4061,7 +4061,7 @@ static void voice_allocate_shared_memory(void)
 	}
 
 	kvptr = ion_map_kernel(common.ion_client,
-				common.ion_handle, 0);
+				common.ion_handle);
 	if (IS_ERR_OR_NULL(kvptr)) {
 		pr_err("%s: ION memory mapping failed\n", __func__);
 		goto err_ion_handle;

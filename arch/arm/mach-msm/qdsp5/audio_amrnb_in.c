@@ -1367,7 +1367,7 @@ static int audamrnb_in_open(struct inode *inode, struct file *file)
 		}
 
 		audio->map_v_write = ion_map_kernel(client,
-			handle, ionflag);
+			handle);
 		if (IS_ERR(audio->map_v_write)) {
 			MM_ERR("could not map write buffers\n");
 			rc = -ENOMEM;
