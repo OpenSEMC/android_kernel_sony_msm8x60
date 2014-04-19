@@ -25,13 +25,14 @@
 #include <asm/system.h>
 
 #define fb_width(fb)	((fb)->var.xres)
-#define fb_linewidth(fb) \
-	((fb)->fix.line_length / (fb_depth(fb) == 2 ? 2 : 4))
 #define fb_height(fb)	((fb)->var.yres)
-#define fb_depth(fb)	((fb)->var.bits_per_pixel >> 3)
-#define fb_size(fb)	(fb_width(fb) * fb_height(fb) * fb_depth(fb))
-#define INIT_IMAGE_FILE "/logo.rle"
+#define fb_size(fb)	((fb)->var.xres * (fb)->var.yres * 2)
 
+#ifdef CONFIG_MACH_TENDERLOIN
+#define from565_r(x) ((((x) >> 11) & 0x1f) * 255 / 31)
+#define from565_g(x) ((((x) >> 5) & 0x3f) * 255 / 63)
+#define from565_b(x) (((x) & 0x1f) * 255 / 31)
+#else
 static void memset16(void *_ptr, unsigned short val, unsigned count)
 {
 	unsigned short *ptr = _ptr;
@@ -39,23 +40,21 @@ static void memset16(void *_ptr, unsigned short val, unsigned count)
 	while (count--)
 		*ptr++ = val;
 }
-
-static void memset32(void *_ptr, unsigned int val, unsigned count)
-{
-	unsigned int *ptr = _ptr;
-	count >>= 2;
-	while (count--)
-		*ptr++ = val;
-}
+#endif
 
 /* 565RLE image format: [count(2 bytes), rle(2 bytes)] */
 int load_565rle_image(char *filename, bool bf_supported)
 {
 	struct fb_info *info;
-	int fd, err = 0;
-	unsigned count, max, width, stride, line_pos = 0;
+	int fd, count, err = 0;
+	unsigned max;
 	unsigned short *data, *ptr;
-	unsigned char *bits;
+#ifdef CONFIG_MACH_TENDERLOIN
+        unsigned int *bits;
+	unsigned short compressed;
+#else
+        unsigned short *bits;
+#endif
 
 	info = registered_fb[0];
 	if (!info) {
@@ -71,6 +70,7 @@ int load_565rle_image(char *filename, bool bf_supported)
 		return -ENOENT;
 	}
 	count = sys_lseek(fd, (off_t)0, 2);
+        printk(KERN_ERR "%s: count=%d\n", __func__, count);
 	if (count <= 0) {
 		err = -EIO;
 		goto err_logo_close_file;
@@ -86,9 +86,8 @@ int load_565rle_image(char *filename, bool bf_supported)
 		err = -EIO;
 		goto err_logo_free_data;
 	}
-	width = fb_width(info);
-	stride = fb_linewidth(info);
-	max = width * fb_height(info);
+
+	max = fb_width(info) * fb_height(info);
 	ptr = data;
 	if (bf_supported && (info->node == 1 || info->node == 2)) {
 		err = -EPERM;
@@ -96,64 +95,36 @@ int load_565rle_image(char *filename, bool bf_supported)
 		       __func__, __LINE__, info->node);
 		goto err_logo_free_data;
 	}
-	bits = (unsigned char *)(info->screen_base);
-	while (count > 3) {
-		int n = ptr[0];
-
-		if (n > max)
-			break;
-		max -= n;
-		while (n > 0) {
-			unsigned int j =
-				(line_pos + n > width ? width-line_pos : n);
-
-			if (fb_depth(info) == 2)
-				memset16(bits, ptr[1], j << 1);
-			else {
-				unsigned int widepixel = ptr[1];
-				widepixel = (widepixel & 0x001f) << (19-0) |
-						(widepixel & 0x07e0) << (10-5) |
-						(widepixel & 0xf800) >> (11-3);
-				memset32(bits, widepixel, j << 2);
-			}
-			bits += j * fb_depth(info);
-			line_pos += j;
-			n -= j;
-			if (line_pos == width) {
-				bits += (stride-width) * fb_depth(info);
-				line_pos = 0;
-			}
+	if (info->screen_base) {
+#ifdef CONFIG_MACH_TENDERLOIN
+                bits = (unsigned int *)(info->screen_base);
+                while (count > 1) {
+                  compressed = *ptr;
+                  *bits = (from565_r(compressed) << 16) |
+                    (from565_g(compressed) << 8) | from565_b(compressed);
+                  bits += 1;
+                  ptr += 1;
+                  count -= 2;
+                }
+#else
+		bits = (unsigned short *)(info->screen_base);
+		while (count > 3) {
+                  unsigned n = ptr[0];
+                  if (n > max)
+                    break;
+                  memset16(bits, ptr[1], n << 1);
+                  bits += n;
+                  max -= n;
+                  ptr += 2;
+                  count -= 4;
 		}
-		ptr += 2;
-		count -= 4;
+#endif
 	}
 
 err_logo_free_data:
 	kfree(data);
 err_logo_close_file:
 	sys_close(fd);
-
 	return err;
 }
-
-static void __init draw_logo(void)
-{
-	struct fb_info *fb_info;
-
-	fb_info = registered_fb[0];
-	if (fb_info && fb_info->fbops->fb_open) {
-		printk(KERN_INFO "Drawing logo.\n");
-		fb_info->fbops->fb_open(fb_info, 0);
-		fb_info->fbops->fb_pan_display(&fb_info->var, fb_info);
-	}
-}
-
-int __init logo_init(void)
-{
-	if (!load_565rle_image(INIT_IMAGE_FILE, 0))
-		draw_logo();
-
-	return 0;
-}
-
-module_init(logo_init);
+EXPORT_SYMBOL(load_565rle_image);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -75,6 +75,8 @@ struct msm_fb_data_type {
 			   struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
 			     struct mdp_histogram *hist);
+
+	struct ion_handle *ihdl;
 	void *cursor_buf;
 	void *cursor_buf_phys;
 
@@ -97,4 +99,6 @@ struct msm_fb_data_type {
 int mdss_fb_get_phys_info(unsigned long *start, unsigned long *len, int fb_num);
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl);
 void mdss_fb_update_backlight(struct msm_fb_data_type *mfd);
+int mdss_fb_suspend_all(void);
+int mdss_fb_resume_all(void);
 #endif /* MDSS_FB_H */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -73,7 +73,7 @@ static int mdss_wb_probe(struct platform_device *pdev)
 	pdata->panel_info.type = WRITEBACK_PANEL;
 	pdata->panel_info.clk_rate = 74250000;
 	pdata->panel_info.pdest = DISPLAY_3;
-	pdata->panel_info.out_format = MDP_RGB_888;
+	pdata->panel_info.out_format = MDP_Y_CBCR_H2V2;
 
 	pdata->on = mdss_wb_on;
 	pdata->off = mdss_wb_off;

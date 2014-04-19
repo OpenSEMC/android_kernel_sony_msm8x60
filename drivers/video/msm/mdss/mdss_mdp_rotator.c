@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -212,6 +212,7 @@ int mdss_mdp_rotator_queue(struct mdss_mdp_rotator_session *rot,
 		rot_pipe->img_width = rot->img_width;
 		rot_pipe->img_height = rot->img_height;
 		rot_pipe->src = rot->src_rect;
+		rot_pipe->dst = rot->src_rect;
 		rot_pipe->bwc_mode = rot->bwc_mode;
 		rot_pipe->params_changed++;
 	}

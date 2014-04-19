@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,7 +24,9 @@
 #include <linux/semaphore.h>
 #include <linux/uaccess.h>
 #include <linux/clk.h>
+#include <linux/iopoll.h>
 #include <linux/platform_device.h>
+#include <linux/iopoll.h>
 
 #include <asm/system.h>
 #include <asm/mach-types.h>
@@ -90,8 +92,6 @@ void mipi_dsi_mdp_stat_inc(int which)
 {
 }
 #endif
-
-#define MIPI_DSI_TX_TIMEOUT_ms	(HZ *40/1000) // 40ms
 
 static void mdp_reset_wq_handler(struct work_struct *work)
 {
@@ -182,7 +182,7 @@ void mipi_dsi_clk_cfg(int on)
 	mutex_lock(&clk_mutex);
 	if (on) {
 		if (dsi_clk_cnt == 0) {
-			mipi_dsi_prepare_clocks();
+			mipi_dsi_prepare_ahb_clocks();
 			mipi_dsi_ahb_ctrl(1);
 			mipi_dsi_clk_enable();
 		}
@@ -192,8 +192,9 @@ void mipi_dsi_clk_cfg(int on)
 			dsi_clk_cnt--;
 			if (dsi_clk_cnt == 0) {
 				mipi_dsi_clk_disable();
-				mipi_dsi_ahb_ctrl(0);
 				mipi_dsi_unprepare_clocks();
+				mipi_dsi_ahb_ctrl(0);
+				mipi_dsi_unprepare_ahb_clocks();
 			}
 		}
 	}
@@ -204,6 +205,7 @@ void mipi_dsi_clk_cfg(int on)
 
 void mipi_dsi_turn_on_clks(void)
 {
+	mipi_dsi_prepare_ahb_clocks();
 	mipi_dsi_ahb_ctrl(1);
 	mipi_dsi_clk_enable();
 }
@@ -211,7 +213,9 @@ void mipi_dsi_turn_on_clks(void)
 void mipi_dsi_turn_off_clks(void)
 {
 	mipi_dsi_clk_disable();
+	mipi_dsi_unprepare_clocks();
 	mipi_dsi_ahb_ctrl(0);
+	mipi_dsi_unprepare_ahb_clocks();
 }
 
 static void mipi_dsi_action(struct list_head *act_list)
@@ -337,16 +341,6 @@ int mipi_dsi_buf_alloc(struct dsi_buf *dp, int size)
 	dp->data = dp->start;
 	dp->len = 0;
 	return size;
-}
-
-void mipi_dsi_buf_release(struct dsi_buf *dp)
-{
-	kfree(dp->start);
-	dp->start = NULL;
-	dp->end = NULL;
-	dp->data = NULL;
-	dp->size = 0;
-	dp->len = 0;
 }
 
 /*
@@ -990,30 +984,29 @@ void mipi_dsi_controller_cfg(int enable)
 
 	uint32 dsi_ctrl;
 	uint32 status;
-	int cnt;
+	u32 sleep_us = 1000;
+	u32 timeout_us = 16000;
 
-	cnt = 16;
-	while (cnt--) {
-		status = MIPI_INP(MIPI_DSI_BASE + 0x0004);
-		status &= 0x02;		/* CMD_MODE_DMA_BUSY */
-		if (status == 0)
-			break;
-		usleep(1000);
-	}
-	if (cnt == 0)
+	/* Check for CMD_MODE_DMA_BUSY */
+	if (readl_poll_timeout((MIPI_DSI_BASE + 0x0004),
+			   status,
+			   ((status & 0x02) == 0),
+			       sleep_us, timeout_us))
 		pr_info("%s: DSI status=%x failed\n", __func__, status);
 
-	cnt = 16;
-	while (cnt--) {
-		status = MIPI_INP(MIPI_DSI_BASE + 0x0008);
-		status &= 0x11111000;	/* x_HS_FIFO_EMPTY */
-		if (status == 0x11111000)	/* all empty */
-			break;
-		usleep(1000);
-	}
-
-	if (cnt == 0)
+	/* Check for x_HS_FIFO_EMPTY */
+	if (readl_poll_timeout((MIPI_DSI_BASE + 0x0008),
+			   status,
+			   ((status & 0x11111000) == 0x11111000),
+			       sleep_us, timeout_us))
 		pr_info("%s: FIFO status=%x failed\n", __func__, status);
+
+	/* Check for VIDEO_MODE_ENGINE_BUSY */
+	if (readl_poll_timeout((MIPI_DSI_BASE + 0x0004),
+			   status,
+			   ((status & 0x08) == 0),
+			       sleep_us, timeout_us))
+		pr_info("%s: DSI status=%x failed\n", __func__, status);
 
 	dsi_ctrl = MIPI_INP(MIPI_DSI_BASE + 0x0000);
 	if (enable)
@@ -1050,7 +1043,7 @@ void mipi_dsi_op_mode_config(int mode)
 }
 
 
-static void mipi_dsi_wait4video_done(void)
+void mipi_dsi_wait4video_done(void)
 {
 	unsigned long flag;
 
@@ -1059,7 +1052,8 @@ static void mipi_dsi_wait4video_done(void)
 	mipi_dsi_enable_irq(DSI_VIDEO_TERM);
 	spin_unlock_irqrestore(&dsi_mdp_lock, flag);
 
-	wait_for_completion(&dsi_video_comp);
+	wait_for_completion_timeout(&dsi_video_comp,
+					msecs_to_jiffies(VSYNC_PERIOD * 4));
 }
 
 void mipi_dsi_mdp_busy_wait(void)
@@ -1195,7 +1189,7 @@ int mipi_dsi_cmds_tx(struct dsi_buf *tp, struct dsi_cmd_desc *cmds, int cnt)
 		mipi_dsi_cmd_dma_add(tp, cm);
 		mipi_dsi_cmd_dma_tx(tp);
 		if (cm->wait)
-			msleep(cm->wait);
+			hr_msleep(cm->wait);
 		cm++;
 	}
 
@@ -1504,10 +1498,7 @@ int mipi_dsi_cmds_rx_new(struct dsi_buf *tp, struct dsi_buf *rp,
 
 int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 {
-
 	unsigned long flags;
-	unsigned long ret_completion;
-	int ret = 0;
 
 #ifdef DSI_HOST_DEBUG
 	int i;
@@ -1515,7 +1506,7 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 
 	bp = tp->data;
 
-	pr_debug("%s: (len=%d) ", __func__, tp->len );
+	pr_debug("%s: ", __func__);
 	for (i = 0; i < tp->len; i++)
 		pr_debug("%x ", *bp++);
 
@@ -1544,24 +1535,14 @@ int mipi_dsi_cmd_dma_tx(struct dsi_buf *tp)
 	wmb();
 	spin_unlock_irqrestore(&dsi_mdp_lock, flags);
 
-#if 0 // If LCD disconnected, this code cannot be pass. wait unlimited time.
-	wait_for_completion(&dsi_dma_comp);
-	ret = tp->len;
-#else // wait, and return error when Timeout.
-	ret_completion = wait_for_completion_timeout( &dsi_dma_comp, MIPI_DSI_TX_TIMEOUT_ms );
-	if( ret_completion == 0 )	{
-		pr_err("mipi_dsi_cmd_dma_tx FAILED : return = %lu (%x %x %x %x)\n", 
-			ret_completion, tp->data[0], tp->data[1], tp->data[2], tp->data[3] );
-		ret = -1; // return error code;
+	if (!wait_for_completion_timeout(&dsi_dma_comp,
+					msecs_to_jiffies(200))) {
+		pr_err("%s: dma timeout error\n", __func__);
 	}
-	else {
-		ret = tp->len;
-	}
-#endif
 
 	dma_unmap_single(&dsi_dev, tp->dmap, tp->len, DMA_TO_DEVICE);
 	tp->dmap = 0;
-	return ret;
+	return tp->len;
 }
 
 int mipi_dsi_cmd_dma_rx(struct dsi_buf *rp, int rlen)
@@ -1677,7 +1658,6 @@ void mipi_dsi_cmdlist_rx(struct dcs_cmd_req *req)
 void mipi_dsi_cmdlist_commit(int from_mdp)
 {
 	struct dcs_cmd_req *req;
-	int video;
 	u32 dsi_ctrl;
 
 	mutex_lock(&cmd_mutex);
@@ -1688,12 +1668,6 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 
 	if (req == NULL)
 		goto need_lock;
-
-	video = MIPI_INP(MIPI_DSI_BASE + 0x0000);
-	video &= 0x02; /* VIDEO_MODE */
-
-	if (!video)
-		mipi_dsi_clk_cfg(1);
 
 	pr_debug("%s:  from_mdp=%d pid=%d\n", __func__, from_mdp, current->pid);
 
@@ -1715,9 +1689,6 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 		mipi_dsi_cmdlist_rx(req);
 	else
 		mipi_dsi_cmdlist_tx(req);
-
-	if (!video)
-		mipi_dsi_clk_cfg(0);
 
 need_lock:
 
@@ -1752,8 +1723,14 @@ int mipi_dsi_cmdlist_put(struct dcs_cmd_req *cmdreq)
 	pr_debug("%s: tot=%d put=%d get=%d\n", __func__,
 		cmdlist.tot, cmdlist.put, cmdlist.get);
 
+	if (req->flags & CMD_CLK_CTRL)
+		mipi_dsi_clk_cfg(1);
+
 	if (req->flags & CMD_REQ_COMMIT)
 		mipi_dsi_cmdlist_commit(0);
+
+	if (req->flags & CMD_CLK_CTRL)
+		mipi_dsi_clk_cfg(0);
 
 	return ret;
 }

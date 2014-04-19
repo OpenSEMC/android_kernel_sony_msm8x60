@@ -23,7 +23,6 @@
 #include "linux/proc_fs.h"
 
 #include <mach/hardware.h>
-#include <mach/msm_subsystem_map.h>
 #include <linux/io.h>
 #include <mach/board.h>
 
@@ -38,7 +37,9 @@
 #include <linux/fb.h>
 #include <linux/list.h>
 #include <linux/types.h>
+#include <linux/switch.h>
 #include <linux/msm_mdp.h>
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
@@ -49,7 +50,6 @@
 #define MSM_FB_DEFAULT_PAGE_SIZE 2
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
-#define MDP_MAX_CACHED_REG 128
 
 struct disp_info_type_suspend {
 	boolean op_enable;
@@ -82,6 +82,7 @@ struct msm_fb_data_type {
 	DISP_TARGET dest;
 	struct fb_info *fbi;
 
+	struct device *dev;
 	boolean op_enable;
 	struct delayed_work backlight_worker;
 	uint32 fb_imgType;
@@ -153,7 +154,6 @@ struct msm_fb_data_type {
 	__u32 bl_level;
 
 	struct platform_device *pdev;
-	struct platform_device *panel_pdev;
 
 	__u32 var_xres;
 	__u32 var_yres;
@@ -183,6 +183,7 @@ struct msm_fb_data_type {
 	struct list_head writeback_busy_queue;
 	struct list_head writeback_free_queue;
 	struct list_head writeback_register_queue;
+	struct switch_dev writeback_sdev;
 	wait_queue_head_t wait_q;
 	struct ion_client *iclient;
 	unsigned long display_iova;
@@ -195,6 +196,7 @@ struct msm_fb_data_type {
 	u32 writeback_state;
 	bool writeback_active_cnt;
 	int cont_splash_done;
+	void *cpu_pm_hdl;
 	u32 acq_fen_cnt;
 	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
 	struct sw_sync_timeline *timeline;
@@ -210,12 +212,12 @@ struct msm_fb_data_type {
 	void *msm_fb_backup;
 	boolean panel_driver_on;
 	int vsync_sysfs_created;
-	void *cpu_pm_hdl;
-	struct mdp_table_entry cached_reg[MDP_MAX_CACHED_REG];
-	uint32 cached_reg_cnt;
-	uint32 cache_reg_en;
+	void *copy_splash_buf;
+	unsigned char *copy_splash_phys;
+	uint32 sec_mapped;
+	uint32 sec_active;
+	uint32 max_map_size;
 };
-
 struct msm_fb_backup_type {
 	struct fb_info info;
 	struct mdp_display_commit disp_commit;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,6 +22,7 @@
 #define MDSS_REG_READ(addr) readl_relaxed(mdss_reg_base + addr)
 
 extern unsigned char *mdss_reg_base;
+extern spinlock_t dsi_clk_lock;
 
 enum mdss_mdp_clk_type {
 	MDSS_CLK_AHB,
