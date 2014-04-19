@@ -622,6 +622,7 @@ void hdmi_set_switch_state(bool enable)
 
 void adjust_driving_strength(void)
 {
+#if 0 // FIX THIS!
 #ifdef CONFIG_FB_MSM_HDMI_MHL_SII9234
 	int i = 0;
 	if(hdmi_msm_state->pd->driving_params){
@@ -634,6 +635,7 @@ void adjust_driving_strength(void)
 			}
 		}
 	}
+#endif
 #endif
 }
 
@@ -4376,10 +4378,12 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	} else
 		mutex_unlock(&external_common_state_hpd_mutex);
 
+#if 0 // FIX THIS!
 #ifdef CONFIG_FB_MSM_HDMI_MHL
 	if (hdmi_msm_state->pd->driving_params) {
 			adjust_driving_strength();
 	}
+#endif
 #endif
 
 	hdmi_msm_dump_regs("HDMI-ON: ");
