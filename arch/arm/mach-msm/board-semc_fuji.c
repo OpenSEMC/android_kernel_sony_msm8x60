@@ -7813,9 +7813,12 @@ static int atv_dac_power(int on)
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
 	.mdp_max_clk = 200000000,
-	.mdp_max_bw = 2000000000,
-	.mdp_bw_ab_factor = 200,
-	.mdp_bw_ib_factor = 210,
+	/* Old values from earlier kernel.
+	 * Might bring these back in the future.
+	 * .mdp_max_bw = 2000000000,
+	 * .mdp_bw_ab_factor = 200,
+	 * .mdp_bw_ib_factor = 210,
+	 */
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
@@ -7825,6 +7828,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 #else
 	.mem_hid = MEMTYPE_EBI1,
 #endif
+        .cont_splash_enabled = 0x01,
 	.mdp_iommu_split_domain = 0,
 };
 
