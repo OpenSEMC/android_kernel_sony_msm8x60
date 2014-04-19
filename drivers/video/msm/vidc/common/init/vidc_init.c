@@ -674,8 +674,7 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 						length,
 						(unsigned long *) &iova,
 						(unsigned long *) &buffer_size,
-						UNCACHED,
-						ION_IOMMU_UNMAP_DELAYED);
+						0, 0);
 				if (ret) {
 					ERR("%s():ION iommu map fail\n",
 					 __func__);
