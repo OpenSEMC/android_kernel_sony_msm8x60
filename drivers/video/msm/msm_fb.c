@@ -4383,6 +4383,9 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	/* link to the latest pdev */
 	mfd->pdev = this_dev;
 
+	/* link to pdev for r63306 support */
+	mfd->panel_pdev = pdev;
+
 	mfd_list[mfd_list_index++] = mfd;
 	fbi_list[fbi_list_index++] = fbi;
 
