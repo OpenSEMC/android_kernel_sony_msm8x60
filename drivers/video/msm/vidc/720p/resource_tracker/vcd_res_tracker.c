@@ -760,6 +760,16 @@ u32 res_trk_get_disable_fullhd(void)
 	return 0;
 }
 
+u32 res_trk_get_enable_sec_metadata(void)
+{
+        return 0;
+}
+
+u32 res_trk_get_ion_flags(void)
+{
+	return 0;
+}
+
 int res_trk_check_for_sec_session()
 {
 	return 0;
@@ -795,3 +805,8 @@ u32 res_trk_is_cp_enabled(void)
 	else
 		return 0;
 }
+u32 res_trk_estimate_perf_level(u32 pn_perf_lvl)
+{
+	return 0;
+}
+
