@@ -2144,7 +2144,6 @@ static int __devinit msm_hs_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 	}
->>>>>>> 60ae1af... msm_serial_hs: Cleanup code to configure/unconfigure UART GPIOs
 
 	resource = platform_get_resource_byname(pdev, IORESOURCE_DMA,
 						"uartdm_channels");
