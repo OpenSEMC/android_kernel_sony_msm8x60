@@ -38,8 +38,6 @@
 #define ENABLE_VOTED	4	/* Bit pol: 1 = running; delay on disable */
 #define DELAY		5	/* No bit to check, just delay */
 
-#define MAX_VDD_LEVELS			4
-
 /**
  * struct clk_vdd_class - Voltage scaling class
  * @class_name: name of the class
@@ -51,16 +49,19 @@
 struct clk_vdd_class {
 	const char *class_name;
 	int (*set_vdd)(struct clk_vdd_class *v_class, int level);
-	int level_votes[MAX_VDD_LEVELS];
+	int *level_votes;
+    int num_levels;
 	unsigned long cur_level;
 	spinlock_t lock;
 };
 
-#define DEFINE_VDD_CLASS(_name, _set_vdd) \
+#define DEFINE_VDD_CLASS(_name, _set_vdd, _num_levels) \
 	struct clk_vdd_class _name = { \
 		.class_name = #_name, \
 		.set_vdd = _set_vdd, \
-		.cur_level = ARRAY_SIZE(_name.level_votes), \
+		.level_votes = (int [_num_levels]) {}, \
+		.num_levels = _num_levels, \
+		.cur_level = _num_levels, \
 		.lock = __SPIN_LOCK_UNLOCKED(lock) \
 	}
 
@@ -108,7 +109,8 @@ struct clk {
 	const char *dbg_name;
 	struct clk *depends;
 	struct clk_vdd_class *vdd_class;
-	unsigned long fmax[MAX_VDD_LEVELS];
+	unsigned long *fmax;
+	int num_fmax;
 	unsigned long rate;
 
 	struct list_head children;

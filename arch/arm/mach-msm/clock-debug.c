@@ -218,7 +218,7 @@ static int list_rates_show(struct seq_file *m, void *unused)
 	if (!clock->vdd_class) {
 		fmax = INT_MAX;
 	} else {
-		for (level = 0; level < ARRAY_SIZE(clock->fmax); level++)
+		for (level = 0; level < clock->num_fmax; level++)
 			if (clock->fmax[level])
 				fmax = clock->fmax[level];
 	}
