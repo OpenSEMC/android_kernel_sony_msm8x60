@@ -473,39 +473,54 @@ out:
 	return ret;
 }
 
-void __init msm_clock_init(struct clock_init_data *data)
+/**
+ * msm_clock_init() - Register and initialize a clock driver
+ * @data: Driver-specific clock initialization data
+ *
+ * Upon return from this call, clock APIs may be used to control
+ * clocks registered with this API.
+ */
+int __init msm_clock_init(struct clock_init_data *data)
 {
-	unsigned n;
-	struct clk_lookup *clock_tbl;
-	size_t num_clocks;
-	struct clk *clk;
+    unsigned n;
+    struct clk_lookup *clock_tbl;
+    size_t num_clocks;
+    struct clk *clk;
 
-	clk_init_data = data;
-	if (clk_init_data->pre_init)
-		clk_init_data->pre_init();
+    if (!data)
+        return -EINVAL;
 
-	clock_tbl = data->table;
-	num_clocks = data->size;
+    clk_init_data = data;
+    if (clk_init_data->pre_init)
+        clk_init_data->pre_init();
 
-	for (n = 0; n < num_clocks; n++) {
-		struct clk *parent;
-		clk = clock_tbl[n].clk;
-		parent = clk_get_parent(clk);
-		if (parent && list_empty(&clk->siblings))
-			list_add(&clk->siblings, &parent->children);
-	}
+    clock_tbl = data->table;
+    num_clocks = data->size;
 
-	/*
-	 * Detect and preserve initial clock state until clock_late_init() or
-	 * a driver explicitly changes it, whichever is first.
-	 */
-	for (n = 0; n < num_clocks; n++)
-		__handoff_clk(clock_tbl[n].clk);
+    for (n = 0; n < num_clocks; n++) {
+        struct clk *parent;
+        clk = clock_tbl[n].clk;
+        parent = clk_get_parent(clk);
+        if (parent && list_empty(&clk->siblings))
+            list_add(&clk->siblings, &parent->children);
+    }
 
-	clkdev_add_table(clock_tbl, num_clocks);
+    /*
+    * Detect and preserve initial clock state until clock_late_init() or
+    * a driver explicitly changes it, whichever is first.
+    */
+    for (n = 0; n < num_clocks; n++)
+            __handoff_clk(clock_tbl[n].clk);
 
-	if (clk_init_data->post_init)
-		clk_init_data->post_init();
+    clkdev_add_table(clock_tbl, num_clocks);
+
+    if (clk_init_data->post_init)
+        clk_init_data->post_init();
+
+    clock_debug_init();
+    clock_debug_register(clock_tbl, num_clocks);
+
+    return 0;
 }
 
 static int __init clock_late_init(void)
