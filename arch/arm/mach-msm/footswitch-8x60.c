@@ -453,108 +453,7 @@ static struct regulator_ops gfx2d_fs_ops = {
 	.disable = gfx2d_footswitch_disable,
 };
 
-/*
- * Lists of required clocks for the collapse and restore sequences.
- *
- * Order matters here. Clocks are listed in the same order as their
- * resets will be de-asserted when the core is restored. Also, rate-
- * settable clocks must be listed before any of the branches that
- * are derived from them. Otherwise, the branches may fail to enable
- * if their parent's rate is not yet set.
- */
-
-static struct clk_data gfx2d0_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ 0 }
-};
-
-static struct clk_data gfx2d1_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ 0 }
-};
-
-static struct clk_data gfx3d_8660_clks[] = {
-	{ .name = "core_clk", .reset_rate = 27000000 },
-	{ .name = "iface_clk" },
-	{ 0 }
-};
-
-static struct clk_data gfx3d_8064_clks[] = {
-	{ .name = "core_clk", .reset_rate = 27000000 },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data ijpeg_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data mdp_8960_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ .name = "vsync_clk" },
-	{ .name = "lut_clk" },
-	{ .name = "tv_src_clk" },
-	{ .name = "tv_clk" },
-	{ 0 }
-};
-
-static struct clk_data mdp_8660_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ .name = "vsync_clk" },
-	{ .name = "tv_src_clk" },
-	{ .name = "tv_clk" },
-	{ .name = "pixel_mdp_clk" },
-	{ .name = "pixel_lcdc_clk" },
-	{ 0 }
-};
-
-static struct clk_data rot_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data ved_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data vfe_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data vpe_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-static struct clk_data vcap_clks[] = {
-	{ .name = "core_clk" },
-	{ .name = "iface_clk" },
-	{ .name = "bus_clk" },
-	{ 0 }
-};
-
-#define FOOTSWITCH(_id, _name, _ops, _gfs_ctl_reg, _dc, _clk_data, \
-		   _bp1, _bp2) \
+#define FOOTSWITCH(_id, _name, _ops, _gfs_ctl_reg) \
 	[(_id)] = { \
 		.desc = { \
 			.id = (_id), \
@@ -566,38 +465,16 @@ static struct clk_data vcap_clks[] = {
 		.gfs_ctl_reg = (_gfs_ctl_reg), \
 	}
 static struct footswitch footswitches[] = {
-	FOOTSWITCH(FS_GFX2D0, "fs_gfx2d0", &gfx2d_fs_ops,
-		GFX2D0_GFS_CTL_REG, 31, gfx2d0_clks,
-		MSM_BUS_MASTER_GRAPHICS_2D_CORE0, 0),
-	FOOTSWITCH(FS_GFX2D1, "fs_gfx2d1", &gfx2d_fs_ops,
-		GFX2D1_GFS_CTL_REG, 31, gfx2d1_clks,
-		MSM_BUS_MASTER_GRAPHICS_2D_CORE1, 0),
-	FOOTSWITCH(FS_GFX3D, "fs_gfx3d", &standard_fs_ops,
-		GFX3D_GFS_CTL_REG, 31, gfx3d_8660_clks,
-		MSM_BUS_MASTER_GRAPHICS_3D, 0),
-	FOOTSWITCH(FS_IJPEG, "fs_ijpeg", &standard_fs_ops,
-		GEMINI_GFS_CTL_REG, 31, ijpeg_clks,
-		MSM_BUS_MASTER_JPEG_ENC, 0),
-	FOOTSWITCH(FS_MDP, "fs_mdp", &standard_fs_ops,
-		MDP_GFS_CTL_REG, 31, NULL,
-		MSM_BUS_MASTER_MDP_PORT0,
-		MSM_BUS_MASTER_MDP_PORT1),
-	FOOTSWITCH(FS_ROT, "fs_rot", &standard_fs_ops,
-		ROT_GFS_CTL_REG, 31, rot_clks,
-		MSM_BUS_MASTER_ROTATOR, 0),
-	FOOTSWITCH(FS_VED, "fs_ved", &standard_fs_ops,
-		VED_GFS_CTL_REG, 31, ved_clks,
-		MSM_BUS_MASTER_HD_CODEC_PORT0,
-		MSM_BUS_MASTER_HD_CODEC_PORT1),
-	FOOTSWITCH(FS_VFE, "fs_vfe", &standard_fs_ops,
-		VFE_GFS_CTL_REG, 31, vfe_clks,
-		MSM_BUS_MASTER_VFE, 0),
-	FOOTSWITCH(FS_VPE, "fs_vpe", &standard_fs_ops,
-		VPE_GFS_CTL_REG, 31, vpe_clks,
-		MSM_BUS_MASTER_VPE, 0),
-	FOOTSWITCH(FS_VCAP, "fs_vcap", &standard_fs_ops,
-		VCAP_GFS_CTL_REG, 31, vcap_clks,
-		MSM_BUS_MASTER_VIDEO_CAP, 0),
+	FOOTSWITCH(FS_GFX2D0, "fs_gfx2d0", &gfx2d_fs_ops, GFX2D0_GFS_CTL_REG),
+	FOOTSWITCH(FS_GFX2D1, "fs_gfx2d1", &gfx2d_fs_ops, GFX2D1_GFS_CTL_REG),
+	FOOTSWITCH(FS_GFX3D,  "fs_gfx3d", &standard_fs_ops, GFX3D_GFS_CTL_REG),
+	FOOTSWITCH(FS_IJPEG,  "fs_ijpeg", &standard_fs_ops, GEMINI_GFS_CTL_REG),
+	FOOTSWITCH(FS_MDP,    "fs_mdp",   &standard_fs_ops, MDP_GFS_CTL_REG),
+	FOOTSWITCH(FS_ROT,    "fs_rot",   &standard_fs_ops, ROT_GFS_CTL_REG),
+	FOOTSWITCH(FS_VED,    "fs_ved",   &standard_fs_ops, VED_GFS_CTL_REG),
+	FOOTSWITCH(FS_VFE,    "fs_vfe",   &standard_fs_ops, VFE_GFS_CTL_REG),
+	FOOTSWITCH(FS_VPE,    "fs_vpe",   &standard_fs_ops, VPE_GFS_CTL_REG),
+	FOOTSWITCH(FS_VCAP,   "fs_vcap",  &standard_fs_ops, VCAP_GFS_CTL_REG),
 };
 
 static int footswitch_probe(struct platform_device *pdev)
@@ -615,27 +492,11 @@ static int footswitch_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	init_data = pdev->dev.platform_data;
-
-	if (pdev->id == FS_MDP) {
-		if (cpu_is_msm8960() || cpu_is_msm8930() || cpu_is_apq8064())
-			fs->clk_data = mdp_8960_clks;
-		else
-			fs->clk_data = mdp_8660_clks;
-	} else if (pdev->id == FS_GFX3D) {
-		if (cpu_is_apq8064()) {
-			fs->clk_data = gfx3d_8064_clks;
-			fs->bus_port1 = MSM_BUS_MASTER_GRAPHICS_3D_PORT1;
-		} else if (cpu_is_msm8930()) {
-			fs->clk_data = gfx3d_8064_clks;
-		} else {
-			fs->clk_data = gfx3d_8660_clks;
-		}
-	} else if (pdev->id == FS_VED) {
-		if (cpu_is_apq8064()) {
-			fs->bus_port0 = MSM_BUS_MASTER_VIDEO_ENC;
-			fs->bus_port1 = MSM_BUS_MASTER_VIDEO_DEC;
-		}
-	}
+    driver_data = init_data->driver_data;
+    fs = &footswitches[pdev->id];
+    fs->clk_data = driver_data->clks;
+    fs->bus_port0 = driver_data->bus_port0;
+    fs->bus_port1 = driver_data->bus_port1;
 
 	for (clock = fs->clk_data; clock->name; clock++) {
 		clock->clk = clk_get(&pdev->dev, clock->name);
