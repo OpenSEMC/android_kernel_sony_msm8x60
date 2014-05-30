@@ -162,6 +162,9 @@ int clk_prepare(struct clk *clk)
 		if (ret)
 			goto err_prepare_depends;
 
+	    ret = vote_rate_vdd(clk, clk->rate);
+        if (ret)
+            goto err_vote_vdd;
 		if (clk->ops->prepare)
 			ret = clk->ops->prepare(clk);
 		if (ret)
@@ -173,6 +176,8 @@ out:
 	return ret;
 err_prepare_clock:
 	clk_unprepare(clk->depends);
+err_vote_vdd:
+    clk_unprepare(clk->depends);
 err_prepare_depends:
 	clk_unprepare(parent);
 	goto out;
@@ -220,8 +225,6 @@ int clk_enable(struct clk *clk)
 
 err_enable_clock:
 	unvote_rate_vdd(clk, clk->rate);
-err_vote_vdd:
-	clk_disable(clk->depends);
 err_enable_depends:
 	clk_disable(parent);
 err_enable_parent:
