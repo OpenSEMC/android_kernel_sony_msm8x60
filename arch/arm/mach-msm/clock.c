@@ -526,11 +526,7 @@ int __init msm_clock_init(struct clock_init_data *data)
 static int __init clock_late_init(void)
 {
 	struct handoff_clk *h, *h_temp;
-	int n, ret = 0;
-
-	clock_debug_init(clk_init_data);
-	for (n = 0; n < clk_init_data->size; n++)
-		clock_debug_add(clk_init_data->table[n].clk);
+	int ret = 0;
 
 	pr_info("%s: Removing enables held for handed-off clocks\n", __func__);
 	list_for_each_entry_safe(h, h_temp, &handoff_list, list) {
