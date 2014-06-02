@@ -676,11 +676,13 @@ static bool msm_pm_power_collapse(bool from_idle)
 
 static void msm_pm_target_init(void)
 {
+#if 0
 	if (cpu_is_apq8064())
 		msm_pm_save_cp15 = true;
 
 	if (cpu_is_msm8974())
 		msm_pm_use_qtimer = true;
+#endif
 }
 
 static int64_t msm_pm_timer_enter_idle(void)

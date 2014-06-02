@@ -2440,7 +2440,8 @@ unsigned char hdmi_is_primary;
 #endif
 
 #define MSM_MM_FW_SIZE		(0x200000 - MSM_ION_HOLE_SIZE) /*(2MB-128KB)*/
-#define MSM_ION_MM_SIZE		0x3E00000  /* (62MB) */
+//#define MSM_ION_MM_SIZE		0x3E00000  /* (62MB) */
+#define MSM_ION_MM_SIZE		0x5000000  /* TEST */
 #define MSM_ION_MFC_SIZE	SZ_8K
 
 #define MSM_MM_FW_BASE		MSM_SMI_BASE
@@ -2459,8 +2460,8 @@ unsigned char hdmi_is_primary;
 //#define MSM_ION_SF_SIZE                0x7000000 /* 112MB */
 //#define MSM_ION_CAMERA_SIZE     0x5000000 /*80MB*/
 
-#define MSM_ION_SF_SIZE         0x10000000 /* TEST */
-#define MSM_ION_CAMERA_SIZE     0x8000000 /* TEST */
+#define MSM_ION_SF_SIZE         0x9600000 /* TEST */
+#define MSM_ION_CAMERA_SIZE     0x7800000 /* TEST */
 
 #ifdef CONFIG_FB_MSM_OVERLAY1_WRITEBACK
 #define MSM_ION_WB_SIZE		0xC00000 /* 12MB */
