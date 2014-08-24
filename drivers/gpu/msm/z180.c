@@ -847,6 +847,7 @@ static int z180_waittimestamp(struct kgsl_device *device,
 				unsigned int msecs)
 {
 	int status = -EINVAL;
+	long timeout = 0;
 
 	/* Don't wait forever, set a max (20 sec) value for now */
 	if (msecs == -1)

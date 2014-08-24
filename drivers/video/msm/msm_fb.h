@@ -82,6 +82,7 @@ struct msm_fb_data_type {
 	DISP_TARGET dest;
 	struct fb_info *fbi;
 
+	struct device *dev;
 	boolean op_enable;
 	struct delayed_work backlight_worker;
 	uint32 fb_imgType;
@@ -215,6 +216,11 @@ struct msm_fb_data_type {
 	struct mdp_table_entry cached_reg[MDP_MAX_CACHED_REG];
 	uint32 cached_reg_cnt;
 	uint32 cache_reg_en;
+	void *copy_splash_buf;
+	unsigned char *copy_splash_phys;
+	uint32 sec_mapped;
+	uint32 sec_active;
+	uint32 max_map_size;
 };
 
 struct msm_fb_backup_type {

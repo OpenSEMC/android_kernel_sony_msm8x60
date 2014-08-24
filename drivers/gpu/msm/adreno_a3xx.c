@@ -3418,6 +3418,8 @@ static void a3xx_perfcounter_init(struct adreno_device *adreno_dev)
  */
 static void a3xx_protect_init(struct kgsl_device *device)
 {
+	int index = 0;
+
 	/* enable access protection to privileged registers */
 	kgsl_regwrite(device, A3XX_CP_PROTECT_CTRL, 0x00000007);
 
