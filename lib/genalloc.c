@@ -177,7 +177,7 @@ int gen_pool_add_virt(struct gen_pool *pool, unsigned long virt, phys_addr_t phy
 	struct gen_pool_chunk *chunk;
 	int nbits = size >> pool->min_alloc_order;
 	int nbytes = sizeof(struct gen_pool_chunk) +
-				(BITS_TO_LONGS(nbits) * sizeof(long);
+				BITS_TO_LONGS(nbits) * sizeof(long);
 
 	if (nbytes <= PAGE_SIZE)
 		chunk = kmalloc_node(nbytes, __GFP_ZERO, nid);
@@ -247,7 +247,7 @@ void gen_pool_destroy(struct gen_pool *pool)
 
 		end_bit = (chunk->end_addr - chunk->start_addr) >> order;
 		nbytes = sizeof(struct gen_pool_chunk) +
-				(BITS_TO_LONGS(end_bit) * sizeof(long);
+				BITS_TO_LONGS(end_bit) * sizeof(long);
 		bit = find_next_bit(chunk->bits, end_bit, 0);
 		BUG_ON(bit < end_bit);
 
@@ -302,8 +302,8 @@ unsigned long gen_pool_alloc_aligned(struct gen_pool *pool, size_t size,
 
 retry:
 		start_bit = bitmap_find_next_zero_area_off(chunk->bits, chunk_size,
-						       0, nbits, align_mask,
-						       chunk->start_addr);
+						   0, nbits, align_mask,
+						   chunk->start_addr >> order);
 		if (start_bit >= chunk_size)
 			continue;
 		remain = bitmap_set_ll(chunk->bits, start_bit, nbits);
